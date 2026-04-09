@@ -77,30 +77,13 @@ async function fetchLegPolyline(from: Pub, to: Pub): Promise<[number, number][]>
   } catch { return []; }
 }
 
-function legZoom(from: Pub, to: Pub): number {
-  const R = 6371000;
-  const lat1 = from.lat * Math.PI / 180;
-  const lat2 = to.lat * Math.PI / 180;
-  const dlat = (to.lat - from.lat) * Math.PI / 180;
-  const dlon = (to.lon - from.lon) * Math.PI / 180;
-  const a = Math.sin(dlat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon / 2) ** 2;
-  const dist = 2 * R * Math.asin(Math.sqrt(a));
-  // metres per pixel at this latitude for a ~300px viewport
-  const mpp = (dist * 1.6) / 300;
-  const lat = ((from.lat + to.lat) / 2) * Math.PI / 180;
-  const z = Math.log2(156543 * Math.cos(lat) / mpp);
-  return Math.min(17, Math.max(15, Math.round(z)));
-}
-
 function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
   useEffect(() => {
-    // Offset center toward 'to' so 'from' sits in the lower portion of the map
-    const center: [number, number] = [
-      from.lat * 0.35 + to.lat * 0.65,
-      from.lon * 0.35 + to.lon * 0.65,
-    ];
-    map.setView(center, legZoom(from, to), { animate: true, duration: 0.4 });
+    map.fitBounds(
+      L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]),
+      { padding: [32, 32], maxZoom: 17, animate: true, duration: 0.4 }
+    );
   }, [from.id, to.id]);
   return null;
 }
