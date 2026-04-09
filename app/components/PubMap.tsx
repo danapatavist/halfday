@@ -441,10 +441,10 @@ export default function PubMap() {
           </div>
           <ul>
             {nonStopPubs.map((pub) => (
-              <li key={pub.id} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                <span className="flex-1 truncate text-sm text-gray-700">{pub.name}</span>
-                <button onClick={() => addToRoute(pub.id)} className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
-                  <Plus size={15} />
+              <li key={pub.id}>
+                <button onClick={() => addToRoute(pub.id)} className="w-full flex items-center gap-3 px-3 py-3 border-b border-gray-50 hover:bg-amber-50 transition-colors text-left">
+                  <span className="flex-1 truncate text-sm text-gray-700">{pub.name}</span>
+                  <Plus size={15} className="text-amber-500 flex-shrink-0" />
                 </button>
               </li>
             ))}
