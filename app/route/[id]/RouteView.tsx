@@ -82,8 +82,12 @@ function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   useEffect(() => {
     map.fitBounds(
       L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]),
-      { padding: [60, 60], animate: true, duration: 0.4 }
+      { padding: [24, 24], animate: true, duration: 0.4, maxZoom: 17 }
     );
+    // enforce minimum zoom after animation so distant pubs don't show the whole city
+    map.once('moveend', () => {
+      if (map.getZoom() < 14) map.setZoom(14, { animate: true });
+    });
   }, [from.id, to.id]);
   return null;
 }
