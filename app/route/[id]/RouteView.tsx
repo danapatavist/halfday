@@ -72,6 +72,7 @@ async function fetchAllPubs(): Promise<Pub[]> {
 export default function RouteView({ route, customPubs }: Props) {
   const [allPubs, setAllPubs] = useState<Pub[]>(customPubs);
   const [polyline, setPolyline] = useState<[number, number][]>([]);
+  const [legs, setLegs] = useState<{ distance: number; duration: number }[]>([]);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -97,8 +98,11 @@ export default function RouteView({ route, customPubs }: Props) {
     fetch(`https://router.project-osrm.org/route/v1/foot/${coords}?overview=full&geometries=geojson`)
       .then((r) => r.json())
       .then((data) => {
-        const c = data.routes?.[0]?.geometry?.coordinates ?? [];
+        const route = data.routes?.[0];
+        if (!route) return;
+        const c = route.geometry?.coordinates ?? [];
         setPolyline(c.map(([lng, lat]: [number, number]) => [lat, lng]));
+        setLegs(route.legs ?? []);
       })
       .catch(() => {});
   }, [allPubs, route.id]);
@@ -147,25 +151,41 @@ export default function RouteView({ route, customPubs }: Props) {
         </div>
       )}
 
-      <div className="p-4 space-y-2 max-w-lg mx-auto w-full">
+      <div className="p-4 max-w-lg mx-auto w-full">
         {stopsWithTimes.map((stop, i) => (
-          <div key={stop.id} className="flex items-center gap-3 bg-gray-900 rounded-lg px-3 py-2">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-              style={{ background: gradientColor(i, stopsWithTimes.length) }}
-            >
-              {i + 1}
+          <div key={stop.id}>
+            <div className="flex items-center gap-3 bg-gray-900 rounded-lg px-3 py-3">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                style={{ background: gradientColor(i, stopsWithTimes.length) }}
+              >
+                {i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm truncate">{stop.name}</div>
+                {(stop.openTime || stop.closeTime) && (
+                  <div className="text-xs text-gray-400">
+                    {stop.openTime && `from ${stop.openTime}`}
+                    {stop.openTime && stop.closeTime && ' · '}
+                    {stop.closeTime && `until ${stop.closeTime}`}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm truncate">{stop.name}</div>
-              {(stop.openTime || stop.closeTime) && (
-                <div className="text-xs text-gray-400">
-                  {stop.openTime && `from ${stop.openTime}`}
-                  {stop.openTime && stop.closeTime && ' · '}
-                  {stop.closeTime && `until ${stop.closeTime}`}
-                </div>
-              )}
-            </div>
+            {i < stopsWithTimes.length - 1 && (
+              <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-gray-500">
+                <span>👣</span>
+                {legs[i] ? (
+                  <span>
+                    {Math.round(legs[i].duration / 60)} min · {legs[i].distance < 1000
+                      ? `${Math.round(legs[i].distance)}m`
+                      : `${(legs[i].distance / 1000).toFixed(1)}km`}
+                  </span>
+                ) : (
+                  <span className="opacity-40">···</span>
+                )}
+              </div>
+            )}
           </div>
         ))}
         {!loading && stops.length === 0 && (
