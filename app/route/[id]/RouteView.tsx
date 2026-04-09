@@ -95,7 +95,11 @@ function legZoom(from: Pub, to: Pub): number {
 function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
   useEffect(() => {
-    const center: [number, number] = [(from.lat + to.lat) / 2, (from.lon + to.lon) / 2];
+    // Offset center toward 'to' so 'from' sits in the lower portion of the map
+    const center: [number, number] = [
+      from.lat * 0.35 + to.lat * 0.65,
+      from.lon * 0.35 + to.lon * 0.65,
+    ];
     map.setView(center, legZoom(from, to), { animate: true, duration: 0.4 });
   }, [from.id, to.id]);
   return null;
