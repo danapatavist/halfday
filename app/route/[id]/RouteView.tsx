@@ -43,28 +43,11 @@ const routeIcon = (order: number, color: string) =>
   });
 
 async function fetchOSMPubs(): Promise<Pub[]> {
-  const res = await fetch('/api/pubs/osm');
-  const cached = await res.json() as Pub[];
-  if (cached.length > 0) return cached;
-
-  const query = `[out:json][timeout:25];node["amenity"="pub"](52.58,1.22,52.68,1.36);out body;`;
-  const endpoints = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  ];
-  const tryOne = async (url: string): Promise<Pub[]> => {
-    const res = await fetch(`${url}?data=${encodeURIComponent(query)}`);
-    const text = await res.text();
-    if (text.trimStart().startsWith("<")) throw new Error("xml");
-    const data = JSON.parse(text);
-    return (data.elements ?? [])
-      .filter((el: { tags?: { name?: string } }) => el.tags?.name)
-      .map((el: { id: number; tags: { name: string }; lat: number; lon: number }) => ({
-        id: el.id, name: el.tags.name, lat: el.lat, lon: el.lon,
-      }));
-  };
-  try { return await Promise.any(endpoints.map(tryOne)); } catch { return []; }
+  try {
+    const res = await fetch('/api/pubs/osm');
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
 }
 
 export default function RouteView({ route, customPubs }: Props) {

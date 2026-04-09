@@ -1,18 +1,61 @@
 import { NextResponse } from 'next/server';
 
 const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24 hours
+const OSM_QUERY = `[out:json][timeout:25];node["amenity"="pub"](52.58,1.22,52.68,1.36);out body;`;
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+];
+
+interface Pub { id: number; name: string; lat: number; lon: number; }
 
 // In-memory cache for local dev
-let memCache: { data: unknown; expires: number } | null = null;
+let memCache: { data: Pub[]; expires: number } | null = null;
 
-// GET: return cached pubs (empty array if not yet cached — client will seed it)
+async function tryEndpoint(endpoint: string): Promise<Pub[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`${endpoint}?data=${encodeURIComponent(OSM_QUERY)}`, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': 'halfday-app/1.0' },
+    });
+    const text = await res.text();
+    if (text.trimStart().startsWith('<')) throw new Error('xml');
+    const json = JSON.parse(text);
+    const pubs: Pub[] = (json.elements ?? [])
+      .filter((el: { tags?: { name?: string } }) => el.tags?.name)
+      .map((el: { id: number; tags: { name: string }; lat: number; lon: number }) => ({
+        id: el.id, name: el.tags.name, lat: el.lat, lon: el.lon,
+      }));
+    if (pubs.length < 5) throw new Error('too few results');
+    return pubs;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchFromOverpass(): Promise<Pub[]> {
+  try {
+    return await Promise.any(OVERPASS_ENDPOINTS.map(tryEndpoint));
+  } catch {
+    return [];
+  }
+}
+
+async function getRedis() {
+  const { Redis } = await import('@upstash/redis');
+  return Redis.fromEnv();
+}
+
+// GET: return cached data instantly; if stale/empty the client will call POST to refresh
 export async function GET() {
   const isVercel = !!process.env.UPSTASH_REDIS_REST_URL;
 
   if (isVercel) {
-    const { Redis } = await import('@upstash/redis');
-    const redis = Redis.fromEnv();
-    const cached = await redis.get('osm_pubs');
+    const redis = await getRedis();
+    const cached = await redis.get<Pub[]>('osm_pubs');
     return NextResponse.json(cached ?? [], {
       headers: { 'Cache-Control': 'public, max-age=3600' },
     });
@@ -24,21 +67,27 @@ export async function GET() {
   return NextResponse.json([]);
 }
 
-// POST: client seeds the cache after fetching from Overpass directly
+// POST: client sends freshly-fetched Overpass data to seed the cache
+// Also accepts an empty body to trigger a server-side fetch (used for warming)
 export async function POST(req: Request) {
   const isVercel = !!process.env.UPSTASH_REDIS_REST_URL;
-  const pubs = await req.json();
+  let pubs: Pub[] = [];
+
+  try { pubs = await req.json(); } catch { /* empty body */ }
+
+  // If client sent no data, try fetching from Overpass ourselves
   if (!Array.isArray(pubs) || pubs.length === 0) {
-    return NextResponse.json({ ok: false });
+    pubs = await fetchFromOverpass();
   }
 
+  if (pubs.length === 0) return NextResponse.json({ ok: false, reason: 'no data' });
+
   if (isVercel) {
-    const { Redis } = await import('@upstash/redis');
-    const redis = Redis.fromEnv();
+    const redis = await getRedis();
     await redis.set('osm_pubs', pubs, { ex: CACHE_TTL_SECONDS });
   } else {
     memCache = { data: pubs, expires: Date.now() + CACHE_TTL_SECONDS * 1000 };
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(pubs);
 }

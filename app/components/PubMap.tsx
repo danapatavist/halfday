@@ -61,43 +61,15 @@ const routeIcon = (order: number, color: string) =>
     iconAnchor: [15, 15],
   });
 
-async function fetchFromOverpass(): Promise<Pub[]> {
-  const query = `[out:json][timeout:25];node["amenity"="pub"](52.58,1.22,52.68,1.36);out body;`;
-  const endpoints = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  ];
-  const tryOne = async (url: string): Promise<Pub[]> => {
-    const res = await fetch(`${url}?data=${encodeURIComponent(query)}`);
-    const text = await res.text();
-    if (text.trimStart().startsWith("<")) throw new Error("xml");
-    const data = JSON.parse(text);
-    return (data.elements ?? [])
-      .filter((el: { tags?: { name?: string } }) => el.tags?.name)
-      .map((el: { id: number; tags: { name: string }; lat: number; lon: number }) => ({
-        id: el.id, name: el.tags.name, lat: el.lat, lon: el.lon,
-      }));
-  };
-  try { return await Promise.any(endpoints.map(tryOne)); } catch { return []; }
-}
-
 async function fetchOSMPubs(): Promise<Pub[]> {
-  // Try the server cache first
-  const res = await fetch('/api/pubs/osm');
-  const cached = await res.json() as Pub[];
-  if (cached.length > 0) return cached.sort((a, b) => a.name.localeCompare(b.name));
-
-  // Cache miss: fetch from Overpass on the client, then seed the server cache
-  const pubs = await fetchFromOverpass();
-  if (pubs.length > 0) {
-    fetch('/api/pubs/osm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pubs),
-    }).catch(() => {});
-  }
-  return pubs.sort((a, b) => a.name.localeCompare(b.name));
+  try {
+    // Try cache first (instant)
+    const cached = await fetch('/api/pubs/osm').then(r => r.json()) as Pub[];
+    if (cached.length > 0) return cached.sort((a, b) => a.name.localeCompare(b.name));
+    // Cache miss: ask server to fetch from Overpass (may be slow on first load)
+    const fresh = await fetch('/api/pubs/osm', { method: 'POST' }).then(r => r.json()) as Pub[];
+    return fresh.sort((a, b) => a.name.localeCompare(b.name));
+  } catch { return []; }
 }
 
 async function fetchRoute(waypoints: [number, number][]): Promise<[number, number][]> {
