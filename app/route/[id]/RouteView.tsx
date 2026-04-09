@@ -80,10 +80,14 @@ async function fetchLegPolyline(from: Pub, to: Pub): Promise<[number, number][]>
 function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
   useEffect(() => {
-    map.fitBounds(
-      L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]),
-      { padding: [32, 32], maxZoom: 17, animate: true, duration: 0.4 }
-    );
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+      map.fitBounds(
+        L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]),
+        { padding: [32, 32], maxZoom: 17 }
+      );
+    }, 50);
+    return () => clearTimeout(timer);
   }, [from.id, to.id]);
   return null;
 }
