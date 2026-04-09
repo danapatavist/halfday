@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { Clock, Trash2, Plus, Save, X, Share2, Printer } from "lucide-react";
+import { Clock, Trash2, Plus, Save, X, Share2, Printer, ArrowLeft } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 
@@ -554,7 +554,7 @@ export default function PubMap() {
           <div className="flex flex-col flex-1 min-h-0">
             <div className="p-3 border-b border-gray-100 flex items-center gap-2">
               <button onClick={() => { setPreviewRouteId(null); setStops([]); }} className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                <X size={14} />
+                <ArrowLeft size={14} />
               </button>
               <span className="flex-1 text-sm font-semibold text-gray-700 truncate">{route.name}</span>
               <button onClick={() => loadRoute(route)} className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors font-medium">Edit</button>
