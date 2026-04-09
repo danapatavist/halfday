@@ -42,11 +42,30 @@ const routeIcon = (order: number, color: string) =>
     iconAnchor: [15, 15],
   });
 
-async function fetchOSMPubs(): Promise<Pub[]> {
+async function fetchAllPubs(): Promise<Pub[]> {
   try {
-    const res = await fetch('/api/pubs/osm');
-    if (!res.ok) return [];
-    return res.json();
+    // Get all stored pubs (OSM + custom saved in DB)
+    const [stored, osm] = await Promise.all([
+      fetch('/api/pubs').then(r => r.json() as Promise<Pub[]>).catch(() => [] as Pub[]),
+      fetch('/api/pubs/osm').then(r => r.json() as Promise<Pub[]>).catch(() => [] as Pub[]),
+    ]);
+    const seen = new Set<number>();
+    const merged: Pub[] = [];
+    for (const p of [...stored, ...osm]) {
+      if (!seen.has(p.id)) { seen.add(p.id); merged.push(p); }
+    }
+    // If still no osm pubs, try warming the cache
+    if (osm.length === 0) {
+      fetch('/api/pubs/osm', { method: 'POST' })
+        .then(r => r.json() as Promise<Pub[]>)
+        .then(fresh => {
+          if (fresh.length > 0) {
+            const ids = new Set(merged.map(p => p.id));
+            merged.push(...fresh.filter(p => !ids.has(p.id)));
+          }
+        }).catch(() => {});
+    }
+    return merged;
   } catch { return []; }
 }
 
@@ -58,9 +77,8 @@ export default function RouteView({ route, customPubs }: Props) {
 
   useEffect(() => {
     setMounted(true);
-    fetchOSMPubs().then((osm) => {
-      const customIds = new Set(customPubs.map((p) => p.id));
-      setAllPubs([...customPubs, ...osm.filter((p) => !customIds.has(p.id))]);
+    fetchAllPubs().then((pubs) => {
+      setAllPubs(pubs);
       setLoading(false);
     });
   }, []);
