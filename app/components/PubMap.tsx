@@ -157,6 +157,7 @@ export default function PubMap() {
   const [isNewRoute, setIsNewRoute] = useState(false);
   const [isNamingRoute, setIsNamingRoute] = useState(false);
   const [previewRouteId, setPreviewRouteId] = useState<string | null>(null);
+  const [previewLegs, setPreviewLegs] = useState<{ distance: number; duration: number }[]>([]);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -241,6 +242,18 @@ export default function PubMap() {
     setActiveRouteId(null);
     setIsNewRoute(false);
     setMobileOpen(false);
+    setPreviewLegs([]);
+    // Fetch walking legs for preview
+    const routePubs = route.stops
+      .map((s) => pubs.find((p) => p.id === s.pubId))
+      .filter(Boolean) as Pub[];
+    if (routePubs.length >= 2) {
+      const coords = routePubs.map((p) => `${p.lon},${p.lat}`).join(';');
+      fetch(`https://router.project-osrm.org/route/v1/foot/${coords}?overview=full&geometries=geojson`)
+        .then((r) => r.json())
+        .then((data) => { setPreviewLegs(data.routes?.[0]?.legs ?? []); })
+        .catch(() => {});
+    }
   }
 
   function loadRoute(route: SavedRoute) {
@@ -534,14 +547,30 @@ export default function PubMap() {
               )}
               <ul>
                 {enrichedStops.map((stop, i) => (
-                  <li key={stop.pubId} className="flex items-center gap-3 px-3 py-3 border-b border-gray-50">
-                    <span style={{ background: gradientColor(i, enrichedStops.length) }} className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
-                      {(stop.openTime || stop.closeTime) && (
-                        <span className="text-xs text-gray-400">{stop.openTime} – {stop.closeTime}</span>
-                      )}
+                  <li key={stop.pubId}>
+                    <div className="flex items-center gap-3 px-3 py-3 border-b border-gray-50">
+                      <span style={{ background: gradientColor(i, enrichedStops.length) }} className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
+                        {(stop.openTime || stop.closeTime) && (
+                          <span className="text-xs text-gray-400">{stop.openTime} – {stop.closeTime}</span>
+                        )}
+                      </div>
                     </div>
+                    {i < enrichedStops.length - 1 && (
+                      <div className="flex items-center gap-1.5 px-4 py-1 text-xs text-gray-400">
+                        <span>👣</span>
+                        {previewLegs[i] ? (
+                          <span>
+                            {Math.round(previewLegs[i].duration / 60)} min · {previewLegs[i].distance < 1000
+                              ? `${Math.round(previewLegs[i].distance)}m`
+                              : `${(previewLegs[i].distance / 1000).toFixed(1)}km`}
+                          </span>
+                        ) : (
+                          <span className="opacity-40">···</span>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
