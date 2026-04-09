@@ -77,6 +77,26 @@ async function fetchLegPolyline(from: Pub, to: Pub): Promise<[number, number][]>
   } catch { return []; }
 }
 
+function FitToStops({ stops }: { stops: Pub[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (stops.length === 0) return;
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+      if (stops.length === 1) {
+        map.setView([stops[0].lat, stops[0].lon], 16);
+      } else {
+        map.fitBounds(
+          L.latLngBounds(stops.map((p) => [p.lat, p.lon])),
+          { padding: [32, 32], maxZoom: 17 }
+        );
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [stops.length]);
+  return null;
+}
+
 function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
   useEffect(() => {
@@ -295,12 +315,13 @@ export default function RouteView({ route, customPubs }: Props) {
             center={center}
             zoom={14}
             style={{ height: '100%', width: '100%' }}
-            zoomControl={true}
+            zoomControl={false}
           >
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://openstreetmap.org/">OpenStreetMap</a>'
             />
+            <FitToStops stops={stops} />
             {polyline.length > 1 && (
               <Polyline positions={polyline} color="#6366f1" weight={3} opacity={0.8} />
             )}
