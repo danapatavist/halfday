@@ -108,7 +108,7 @@ export default function RouteView({ route, customPubs }: Props) {
     : [52.63, 1.3];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div className="min-h-screen bg-gray-950 text-white">
       <div className="px-4 py-4 border-b border-gray-800 flex items-center gap-3">
         <span className="text-2xl">🍺</span>
         <div>
@@ -120,11 +120,11 @@ export default function RouteView({ route, customPubs }: Props) {
       </div>
 
       {mounted && (
-        <div className="flex-1 min-h-[50vh]">
+        <div style={{ height: '50vh' }}>
           <MapContainer
             center={center}
             zoom={14}
-            style={{ height: '100%', minHeight: '50vh', width: '100%' }}
+            style={{ height: '100%', width: '100%' }}
             zoomControl={true}
           >
             <TileLayer
