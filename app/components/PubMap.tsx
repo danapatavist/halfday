@@ -249,7 +249,7 @@ export default function PubMap() {
       .filter(Boolean) as Pub[];
     if (routePubs.length >= 2) {
       const coords = routePubs.map((p) => `${p.lon},${p.lat}`).join(';');
-      fetch(`https://router.project-osrm.org/route/v1/foot/${coords}?overview=full&geometries=geojson`)
+      fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=full&geometries=geojson`)
         .then((r) => r.json())
         .then((data) => { setPreviewLegs(data.routes?.[0]?.legs ?? []); })
         .catch(() => {});
