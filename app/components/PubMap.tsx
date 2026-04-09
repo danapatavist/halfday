@@ -156,6 +156,7 @@ export default function PubMap() {
   // "new" = unsaved new route is active; null = no route selected
   const [isNewRoute, setIsNewRoute] = useState(false);
   const [isNamingRoute, setIsNamingRoute] = useState(false);
+  const [previewRouteId, setPreviewRouteId] = useState<string | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -223,6 +224,7 @@ export default function PubMap() {
     setRouteName("");
     setStops([]);
     setActiveRouteId(null);
+    setPreviewRouteId(null);
     setIsNewRoute(false);
     setIsNamingRoute(true);
   }
@@ -233,10 +235,19 @@ export default function PubMap() {
     setIsNewRoute(true);
   }
 
+  function previewRoute(route: SavedRoute) {
+    setStops(route.stops);
+    setPreviewRouteId(route.id);
+    setActiveRouteId(null);
+    setIsNewRoute(false);
+    setMobileOpen(false);
+  }
+
   function loadRoute(route: SavedRoute) {
     setRouteName(route.name);
     setStops(route.stops);
     setActiveRouteId(route.id);
+    setPreviewRouteId(null);
     setIsNewRoute(false);
     setMobileOpen(false);
   }
@@ -504,6 +515,53 @@ export default function PubMap() {
       return renderRouteEditor();
     }
 
+    // Preview: show route stops read-only with Edit/Share/Print
+    if (previewRouteId) {
+      const route = savedRoutes.find((r) => r.id === previewRouteId);
+      if (route) {
+        return (
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="p-3 border-b border-gray-100 flex items-center gap-2">
+              <button onClick={() => { setPreviewRouteId(null); setStops([]); }} className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                <X size={14} />
+              </button>
+              <span className="flex-1 text-sm font-semibold text-gray-700 truncate">{route.name}</span>
+              <button onClick={() => loadRoute(route)} className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors font-medium">Edit</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {enrichedStops.length === 0 && (
+                <p className="p-4 text-sm text-gray-400">No stops yet</p>
+              )}
+              <ul>
+                {enrichedStops.map((stop, i) => (
+                  <li key={stop.pubId} className="flex items-center gap-3 px-3 py-3 border-b border-gray-50">
+                    <span style={{ background: gradientColor(i, enrichedStops.length) }} className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
+                      {(stop.openTime || stop.closeTime) && (
+                        <span className="text-xs text-gray-400">{stop.openTime} – {stop.closeTime}</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="p-3 border-t border-gray-100 flex gap-2">
+              <button onClick={() => shareRoute(route.id)} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                {copied === route.id ? "✓ Copied" : <><Share2 size={12} /> Share</>}
+              </button>
+              <button onClick={handlePrint} disabled={enrichedStops.length < 2} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                <Printer size={12} /> Print
+              </button>
+              <button onClick={() => deleteRoute(route.id)} className="px-3 py-2 text-xs rounded-lg border border-gray-200 text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        );
+      }
+    }
+
     // Default: saved routes list
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -520,20 +578,11 @@ export default function PubMap() {
             </div>
           )}
           {savedRoutes.map((route) => (
-            <div key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
-              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => loadRoute(route)}>
+            <div key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => previewRoute(route)}>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
                 <p className="text-xs text-gray-400">{route.stops.length} stop{route.stops.length !== 1 ? "s" : ""} · {new Date(route.createdAt).toLocaleDateString()}</p>
               </div>
-              <button onClick={() => shareRoute(route.id)} title="Copy share link" className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors">
-                {copied === route.id ? <span className="text-xs text-blue-500">✓</span> : <Share2 size={14} />}
-              </button>
-              <button onClick={handlePrint} disabled={route.stops.length < 2} title="Print" className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 transition-colors">
-                <Printer size={14} />
-              </button>
-              <button onClick={() => deleteRoute(route.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                <Trash2 size={14} />
-              </button>
             </div>
           ))}
         </div>
@@ -665,7 +714,7 @@ export default function PubMap() {
             <MapRefCapture mapRef={mapRef} />
             <MapClickHandler addMode={addMode} onMapClick={handleMapClick} />
             <FitToStops pubs={enrichedStops.map((s) => s.pub)} />
-            {pubs.map((pub) => {
+            {pubs.filter((p) => (isEditing || previewRouteId) ? stopIds.has(p.id) : true).map((pub) => {
               const order = stopOrderMap.get(pub.id);
               const color = order !== undefined ? gradientColor(order - 1, enrichedStops.length) : undefined;
               return (
