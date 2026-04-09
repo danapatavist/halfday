@@ -155,6 +155,7 @@ export default function PubMap() {
   const [copied, setCopied] = useState<string | null>(null);
   // "new" = unsaved new route is active; null = no route selected
   const [isNewRoute, setIsNewRoute] = useState(false);
+  const [isNamingRoute, setIsNamingRoute] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -166,7 +167,7 @@ export default function PubMap() {
   const stopIds = new Set(stops.map((s) => s.pubId));
   const stopOrderMap = new Map(enrichedStops.map((s, i) => [s.pubId, i + 1]));
 
-  const isEditing = isNewRoute || activeRouteId !== null;
+  const isEditing = isNewRoute || activeRouteId !== null || isNamingRoute;
 
   // Persist unsaved route draft to localStorage
   useEffect(() => {
@@ -222,6 +223,13 @@ export default function PubMap() {
     setRouteName("");
     setStops([]);
     setActiveRouteId(null);
+    setIsNewRoute(false);
+    setIsNamingRoute(true);
+  }
+
+  function confirmRouteName() {
+    if (!routeName.trim()) return;
+    setIsNamingRoute(false);
     setIsNewRoute(true);
   }
 
@@ -351,119 +359,101 @@ export default function PubMap() {
   const tabBtnClass = (tab: Tab) =>
     `flex-1 py-2.5 text-xs font-medium transition-colors ${activeTab === tab ? "text-amber-700 border-b-2 border-amber-600" : "text-gray-400 hover:text-gray-600"}`;
 
-  // ── Route editor (shown inline when a route is active) ───────────────────────
+  // ── Route editor ─────────────────────────────────────────────────────────────
 
   function renderRouteEditor() {
+    const nonStopPubs = pubs
+      .filter((p) => !stopIds.has(p.id) && p.name.toLowerCase().includes(pubSearch.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
     return (
-      <div className="border-b border-amber-200 bg-amber-50">
-        <div className="p-3 space-y-2">
-          <input
-            type="text"
-            placeholder="Name this route..."
-            value={routeName}
-            onChange={(e) => setRouteName(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:border-amber-400 bg-white"
-          />
-          <div className="flex gap-1">
-            <button
-              onClick={saveRoute}
-              disabled={saving || !routeName.trim()}
-              className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
-            >
-              <Save size={12} />
-              {saving ? "Saving..." : activeRouteId ? "Update" : "Save"}
-            </button>
-            <button onClick={handlePrint} disabled={enrichedStops.length < 2} className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors">Print</button>
-            {activeRouteId && (
-              <button onClick={() => shareRoute(activeRouteId)} title="Copy share link" className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                {copied === activeRouteId ? "✓" : <Share2 size={13} />}
-              </button>
-            )}
-            {activeRouteId && (
-              <button onClick={() => deleteRoute(activeRouteId)} title="Delete route" className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-400 border border-gray-200 hover:bg-red-50 hover:text-red-500 transition-colors">
-                <Trash2 size={13} />
-              </button>
-            )}
-            <button
-              onClick={() => { setActiveRouteId(null); setIsNewRoute(false); setStops([]); setRouteName(""); }}
-              title="Close"
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-400 border border-gray-200 hover:bg-gray-100 transition-colors"
-            >
-              <X size={13} />
-            </button>
-          </div>
-          {enrichedStops.length > 0 && (
-            <p className="text-xs text-gray-500">
-              {enrichedStops.length} stop{enrichedStops.length !== 1 ? "s" : ""}
-              {totalDistance > 0 ? ` · ${totalDistance < 1000 ? `${Math.round(totalDistance)}m` : `${(totalDistance / 1000).toFixed(1)}km`}` : ""}
-            </p>
-          )}
+      <div className="flex flex-col flex-1 min-h-0">
+        {/* Header: name + save */}
+        <div className="p-3 border-b border-gray-100 flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-700 truncate flex-1">{routeName}</span>
+          <button
+            onClick={saveRoute}
+            disabled={saving}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
+          >
+            <Save size={12} />
+            {saving ? "Saving…" : activeRouteId ? "Update" : "Save"}
+          </button>
+          <button
+            onClick={() => { setActiveRouteId(null); setIsNewRoute(false); setStops([]); setRouteName(""); localStorage.removeItem("halfday_draft"); }}
+            className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <X size={14} />
+          </button>
         </div>
 
-        {enrichedStops.length > 0 && (
-          <ul>
-            {enrichedStops.map((stop, i) => {
-              const color = gradientColor(i, enrichedStops.length);
-              const isDragOver = dragOverId === stop.pubId;
-              return (
-                <li
-                  key={stop.pubId} draggable
-                  onDragStart={() => onDragStart(stop.pubId)}
-                  onDragOver={(e) => onDragOver(e, stop.pubId)}
-                  onDrop={() => onDrop(stop.pubId)}
-                  onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
-                  className={`flex items-center gap-2 px-3 py-2 text-sm border-t border-amber-100 ${isDragOver ? "bg-amber-100" : ""} ${draggingId === stop.pubId ? "opacity-40" : ""}`}
-                >
-                  <span className="text-amber-300 text-xs cursor-grab select-none">⠿</span>
-                  <span style={{ background: color }} className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Clock size={11} className="text-gray-300 flex-shrink-0" />
-                      <input type="time" value={stop.openTime} onChange={(e) => updateStopTime(stop.pubId, "openTime", e.target.value)} className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" />
-                      <span className="text-xs text-gray-300">–</span>
-                      <input type="time" value={stop.closeTime} onChange={(e) => updateStopTime(stop.pubId, "closeTime", e.target.value)} className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" />
-                    </div>
-                  </div>
-                  <button onClick={() => removeFromRoute(stop.pubId)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><X size={14} /></button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {/* Inline pub search — add stops without leaving this tab */}
-        <div className="border-t border-amber-100 p-2">
-          <input
-            type="text"
-            placeholder="Search pubs to add..."
-            value={pubSearch}
-            onChange={(e) => setPubSearch(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm border border-amber-200 rounded-lg focus:outline-none focus:border-amber-400 bg-white"
-          />
-          {pubSearch.trim() && (
-            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-amber-100 bg-white">
-              {pubs
-                .filter((p) => p.name.toLowerCase().includes(pubSearch.toLowerCase()) && !stopIds.has(p.id))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .slice(0, 20)
-                .map((pub) => (
-                  <li key={pub.id}>
-                    <button
-                      onClick={() => { addToRoute(pub.id); setPubSearch(""); }}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-amber-50 flex items-center gap-2"
+        <div className="flex-1 overflow-y-auto">
+          {/* Current stops */}
+          {enrichedStops.length > 0 && (
+            <>
+              <div className="px-3 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                Your stops · {enrichedStops.length}{totalDistance > 0 ? ` · ${totalDistance < 1000 ? `${Math.round(totalDistance)}m` : `${(totalDistance / 1000).toFixed(1)}km`}` : ""}
+              </div>
+              <ul className="border-b border-gray-100">
+                {enrichedStops.map((stop, i) => {
+                  const color = gradientColor(i, enrichedStops.length);
+                  const isDragOver = dragOverId === stop.pubId;
+                  return (
+                    <li
+                      key={stop.pubId} draggable
+                      onDragStart={() => onDragStart(stop.pubId)}
+                      onDragOver={(e) => onDragOver(e, stop.pubId)}
+                      onDrop={() => onDrop(stop.pubId)}
+                      onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
+                      className={`flex items-center gap-2 px-3 py-2 border-b border-gray-50 ${isDragOver ? "bg-amber-50" : "bg-white"} ${draggingId === stop.pubId ? "opacity-40" : ""}`}
                     >
-                      <Plus size={12} className="text-amber-500 flex-shrink-0" />
-                      <span className="truncate">{pub.name}</span>
-                    </button>
-                  </li>
-                ))
-              }
-              {pubs.filter((p) => p.name.toLowerCase().includes(pubSearch.toLowerCase()) && !stopIds.has(p.id)).length === 0 && (
-                <li className="px-3 py-2 text-sm text-gray-400">No pubs found</li>
-              )}
-            </ul>
+                      <span className="text-gray-300 text-xs cursor-grab select-none">⠿</span>
+                      <span style={{ background: color }} className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Clock size={11} className="text-gray-300 flex-shrink-0" />
+                          <input type="time" value={stop.openTime} onChange={(e) => updateStopTime(stop.pubId, "openTime", e.target.value)} className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" />
+                          <span className="text-xs text-gray-300">–</span>
+                          <input type="time" value={stop.closeTime} onChange={(e) => updateStopTime(stop.pubId, "closeTime", e.target.value)} className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" />
+                        </div>
+                      </div>
+                      <button onClick={() => removeFromRoute(stop.pubId)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><X size={14} /></button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
+
+          {/* All pubs to add from */}
+          <div className="px-3 pt-2 pb-1 flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide flex-1">Add pubs</span>
+          </div>
+          <div className="px-3 pb-2">
+            <input
+              type="text"
+              placeholder="Search…"
+              value={pubSearch}
+              onChange={(e) => setPubSearch(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-amber-400"
+            />
+          </div>
+          <ul>
+            {nonStopPubs.map((pub) => (
+              <li key={pub.id} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <span className="flex-1 truncate text-sm text-gray-700">{pub.name}</span>
+                <button onClick={() => addToRoute(pub.id)} className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                  <Plus size={15} />
+                </button>
+              </li>
+            ))}
+            {nonStopPubs.length === 0 && (
+              <li className="px-3 py-3 text-sm text-gray-400 text-center">
+                {pubs.length === 0 ? "Loading pubs…" : "No pubs found"}
+              </li>
+            )}
+          </ul>
         </div>
       </div>
     );
@@ -472,42 +462,74 @@ export default function PubMap() {
   // ── Tab panels ───────────────────────────────────────────────────────────────
 
   function renderRoutesTab() {
+    // Step 1: naming a new route
+    if (isNamingRoute) {
+      return (
+        <div className="flex flex-col flex-1 min-h-0 p-4 gap-3">
+          <p className="text-sm font-medium text-gray-700">Name your route</p>
+          <input
+            autoFocus
+            type="text"
+            placeholder="e.g. Saturday Crawl"
+            value={routeName}
+            onChange={(e) => setRouteName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") confirmRouteName(); if (e.key === "Escape") { setIsNamingRoute(false); setRouteName(""); } }}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-amber-400"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={confirmRouteName}
+              disabled={!routeName.trim()}
+              className="flex-1 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
+            >
+              Create
+            </button>
+            <button
+              onClick={() => { setIsNamingRoute(false); setRouteName(""); }}
+              className="px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Step 2: editing a route (full pub list)
+    if (isEditing) {
+      return renderRouteEditor();
+    }
+
+    // Default: saved routes list
     return (
       <div className="flex flex-col flex-1 min-h-0">
         <div className="p-3 border-b border-gray-100">
-          <button onClick={startNewRoute} className="w-full text-xs py-2 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 transition-colors">
+          <button onClick={startNewRoute} className="w-full text-sm py-2 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 transition-colors">
             + New Route
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {/* Unsaved new route editor */}
-          {isNewRoute && renderRouteEditor()}
-
-          {/* Saved routes */}
-          {savedRoutes.length === 0 && !isNewRoute && (
+          {savedRoutes.length === 0 && (
             <div className="p-6 text-center text-sm text-gray-400">
               <div className="text-2xl mb-2">🍺</div>
               Create your first route
             </div>
           )}
           {savedRoutes.map((route) => (
-            <div key={route.id}>
-              {activeRouteId === route.id ? (
-                renderRouteEditor()
-              ) : (
-                <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => loadRoute(route)}>
-                    <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
-                    <p className="text-xs text-gray-400">{route.stops.length} stop{route.stops.length !== 1 ? "s" : ""} · {new Date(route.createdAt).toLocaleDateString()}</p>
-                  </div>
-                  <button onClick={() => shareRoute(route.id)} title="Copy share link" className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors">
-                    {copied === route.id ? <span className="text-xs text-blue-500">✓</span> : <Share2 size={14} />}
-                  </button>
-                  <button onClick={() => deleteRoute(route.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
+            <div key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => loadRoute(route)}>
+                <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
+                <p className="text-xs text-gray-400">{route.stops.length} stop{route.stops.length !== 1 ? "s" : ""} · {new Date(route.createdAt).toLocaleDateString()}</p>
+              </div>
+              <button onClick={() => shareRoute(route.id)} title="Copy share link" className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                {copied === route.id ? <span className="text-xs text-blue-500">✓</span> : <Share2 size={14} />}
+              </button>
+              <button onClick={handlePrint} disabled={route.stops.length < 2} title="Print" className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 transition-colors">
+                <Save size={14} />
+              </button>
+              <button onClick={() => deleteRoute(route.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 size={14} />
+              </button>
             </div>
           ))}
         </div>
