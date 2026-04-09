@@ -10,11 +10,21 @@ export async function GET() {
   }
 }
 
+function toSlug(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function shortId(): string {
+  return Math.random().toString(36).slice(2, 6);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const routes = await getRoutes();
-    const newRoute = { ...body, id: Date.now().toString(), createdAt: new Date().toISOString() };
+    const base = toSlug(body.name || 'route');
+    const slug = base ? `${base}-${shortId()}` : `route-${shortId()}`;
+    const newRoute = { ...body, id: slug, createdAt: new Date().toISOString() };
     await setRoutes([...routes, newRoute]);
     return NextResponse.json(newRoute, { status: 201 });
   } catch (e) {

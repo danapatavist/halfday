@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 
@@ -79,13 +79,12 @@ async function fetchLegPolyline(from: Pub, to: Pub): Promise<[number, number][]>
 
 function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
-  const key = `${from.id}-${to.id}`;
-  const lastKey = useRef<string>("");
   useEffect(() => {
-    if (lastKey.current === key) return;
-    lastKey.current = key;
-    map.fitBounds(L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]), { padding: [60, 60] });
-  }, [key]);
+    map.fitBounds(
+      L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]),
+      { padding: [60, 60], animate: true, duration: 0.4 }
+    );
+  }, [from.id, to.id]);
   return null;
 }
 
@@ -198,36 +197,35 @@ export default function RouteView({ route, customPubs }: Props) {
 
         {/* Footer card */}
         <div className="shrink-0 bg-white border-t border-gray-200 px-4 pt-4 pb-6">
-          {/* Pub names */}
-          <div className="flex items-start gap-3 mb-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shrink-0 font-bold"
-                  style={{ background: gradientColor(currentLeg, stops.length) }}
-                >
-                  {currentLeg + 1}
-                </span>
-                <span className="font-semibold text-sm truncate">{from.name}</span>
+          {/* Pub names stacked */}
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <span
+                className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shrink-0 font-bold"
+                style={{ background: gradientColor(currentLeg, stops.length) }}
+              >
+                {currentLeg + 1}
+              </span>
+              <div>
+                <p className="font-semibold text-sm leading-tight">{from.name}</p>
+                {fromStop?.closeTime && (
+                  <p className="text-xs text-gray-400">until {fromStop.closeTime}</p>
+                )}
               </div>
-              {fromStop?.closeTime && (
-                <p className="text-xs text-gray-400 pl-8">until {fromStop.closeTime}</p>
-              )}
             </div>
-            <div className="text-gray-300 mt-1">→</div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shrink-0 font-bold"
-                  style={{ background: gradientColor(currentLeg + 1, stops.length) }}
-                >
-                  {currentLeg + 2}
-                </span>
-                <span className="font-semibold text-sm truncate">{to.name}</span>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shrink-0 font-bold"
+                style={{ background: gradientColor(currentLeg + 1, stops.length) }}
+              >
+                {currentLeg + 2}
+              </span>
+              <div>
+                <p className="font-semibold text-sm leading-tight">{to.name}</p>
+                {toStop?.openTime && (
+                  <p className="text-xs text-gray-400">opens {toStop.openTime}</p>
+                )}
               </div>
-              {toStop?.openTime && (
-                <p className="text-xs text-gray-400 pl-8">opens {toStop.openTime}</p>
-              )}
             </div>
           </div>
 
