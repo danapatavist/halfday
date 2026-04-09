@@ -316,6 +316,10 @@ export default function RouteView({ route, customPubs }: Props) {
             zoom={14}
             style={{ height: '100%', width: '100%' }}
             zoomControl={false}
+            dragging={false}
+            scrollWheelZoom={false}
+            doubleClickZoom={false}
+            touchZoom={false}
           >
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
