@@ -640,12 +640,8 @@ export default function PubMap() {
                       {pub.name}
                       {pub.custom && <span className="ml-1 text-xs text-violet-500">(custom)</span>}
                     </span>
-                    {order !== undefined ? (
+                    {order !== undefined && (
                       <span style={{ background: color }} className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{order}</span>
-                    ) : (
-                      <button onClick={() => addToRoute(pub.id)} title="Add to route" className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
-                        <Plus size={14} />
-                      </button>
                     )}
                     {/* Only custom pubs can be deleted */}
                     {pub.custom && (
