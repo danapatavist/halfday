@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
   const envStatus = {
     hasUrl: !!url,
     hasToken: !!token,
     urlPrefix: url ? url.slice(0, 30) : null,
+    usingKvPrefix: !!process.env.KV_REST_API_URL,
   };
 
   if (!url || !token) {
@@ -16,7 +17,7 @@ export async function GET() {
 
   try {
     const { Redis } = await import('@upstash/redis');
-    const redis = Redis.fromEnv();
+    const redis = new Redis({ url, token });
     await redis.set('debug_test', 'ok');
     const val = await redis.get('debug_test');
     const pubs = await redis.get('pubs');

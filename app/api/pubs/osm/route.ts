@@ -10,8 +10,19 @@ const OVERPASS_ENDPOINTS = [
 
 interface Pub { id: number; name: string; lat: number; lon: number; }
 
-// In-memory cache for local dev
 let memCache: { data: Pub[]; expires: number } | null = null;
+
+function isVercel() {
+  return !!(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
+}
+
+async function getRedis() {
+  const { Redis } = await import('@upstash/redis');
+  return new Redis({
+    url: (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)!,
+    token: (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)!,
+  });
+}
 
 async function tryEndpoint(endpoint: string): Promise<Pub[]> {
   const ctrl = new AbortController();
@@ -44,50 +55,40 @@ async function fetchFromOverpass(): Promise<Pub[]> {
   }
 }
 
-async function getRedis() {
-  const { Redis } = await import('@upstash/redis');
-  return Redis.fromEnv();
-}
-
-// GET: return cached data instantly; if stale/empty the client will call POST to refresh
 export async function GET() {
-  const isVercel = !!process.env.UPSTASH_REDIS_REST_URL;
-
-  if (isVercel) {
-    const redis = await getRedis();
-    const cached = await redis.get<Pub[]>('osm_pubs');
-    return NextResponse.json(cached ?? [], {
-      headers: { 'Cache-Control': 'public, max-age=3600' },
-    });
+  try {
+    if (isVercel()) {
+      const redis = await getRedis();
+      const cached = await redis.get<Pub[]>('osm_pubs');
+      return NextResponse.json(cached ?? [], {
+        headers: { 'Cache-Control': 'public, max-age=3600' },
+      });
+    }
+    if (memCache && memCache.expires > Date.now()) {
+      return NextResponse.json(memCache.data);
+    }
+    return NextResponse.json([]);
+  } catch {
+    return NextResponse.json([]);
   }
-
-  if (memCache && memCache.expires > Date.now()) {
-    return NextResponse.json(memCache.data);
-  }
-  return NextResponse.json([]);
 }
 
-// POST: client sends freshly-fetched Overpass data to seed the cache
-// Also accepts an empty body to trigger a server-side fetch (used for warming)
 export async function POST(req: Request) {
-  const isVercel = !!process.env.UPSTASH_REDIS_REST_URL;
   let pubs: Pub[] = [];
-
   try { pubs = await req.json(); } catch { /* empty body */ }
-
-  // If client sent no data, try fetching from Overpass ourselves
   if (!Array.isArray(pubs) || pubs.length === 0) {
     pubs = await fetchFromOverpass();
   }
+  if (pubs.length === 0) return NextResponse.json([]);
 
-  if (pubs.length === 0) return NextResponse.json({ ok: false, reason: 'no data' });
-
-  if (isVercel) {
-    const redis = await getRedis();
-    await redis.set('osm_pubs', pubs, { ex: CACHE_TTL_SECONDS });
-  } else {
-    memCache = { data: pubs, expires: Date.now() + CACHE_TTL_SECONDS * 1000 };
-  }
+  try {
+    if (isVercel()) {
+      const redis = await getRedis();
+      await redis.set('osm_pubs', pubs, { ex: CACHE_TTL_SECONDS });
+    } else {
+      memCache = { data: pubs, expires: Date.now() + CACHE_TTL_SECONDS * 1000 };
+    }
+  } catch { /* cache write failed, still return data */ }
 
   return NextResponse.json(pubs);
 }

@@ -21,7 +21,14 @@ export interface SavedRoute {
 }
 
 function isVercel() {
-  return !!process.env.UPSTASH_REDIS_REST_URL;
+  return !!(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
+}
+
+function getRedisConfig() {
+  return {
+    url: (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)!,
+    token: (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)!,
+  };
 }
 
 // ── File-based (local dev) ────────────────────────────────────────────────────
@@ -44,15 +51,18 @@ async function writeFile<T>(key: string, data: T): Promise<void> {
 
 // ── Redis (Vercel / production) ───────────────────────────────────────────────
 
-async function readRedis<T>(key: string): Promise<T> {
+async function getRedis() {
   const { Redis } = await import('@upstash/redis');
-  const redis = Redis.fromEnv();
+  return new Redis(getRedisConfig());
+}
+
+async function readRedis<T>(key: string): Promise<T> {
+  const redis = await getRedis();
   return (await redis.get<T>(key)) ?? ([] as unknown as T);
 }
 
 async function writeRedis<T>(key: string, data: T): Promise<void> {
-  const { Redis } = await import('@upstash/redis');
-  const redis = Redis.fromEnv();
+  const redis = await getRedis();
   await redis.set(key, data);
 }
 
