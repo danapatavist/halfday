@@ -154,6 +154,15 @@ export default function PubMap() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
+  const enrichedStops = stops
+    .map((s) => ({ ...s, pub: pubs.find((p) => p.id === s.pubId) }))
+    .filter((s): s is RouteStop & { pub: Pub } => !!s.pub);
+
+  const stopIds = new Set(stops.map((s) => s.pubId));
+  const stopOrderMap = new Map(enrichedStops.map((s, i) => [s.pubId, i + 1]));
+
+  const isEditing = isNewRoute || activeRouteId !== null;
+
   // Persist unsaved route draft to localStorage
   useEffect(() => {
     if (!isEditing) return;
@@ -177,15 +186,6 @@ export default function PubMap() {
       }
     } catch { /* ignore */ }
   }, [loading]);
-
-  const enrichedStops = stops
-    .map((s) => ({ ...s, pub: pubs.find((p) => p.id === s.pubId) }))
-    .filter((s): s is RouteStop & { pub: Pub } => !!s.pub);
-
-  const stopIds = new Set(stops.map((s) => s.pubId));
-  const stopOrderMap = new Map(enrichedStops.map((s, i) => [s.pubId, i + 1]));
-
-  const isEditing = isNewRoute || activeRouteId !== null;
 
   useEffect(() => {
     Promise.all([
