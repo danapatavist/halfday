@@ -62,27 +62,9 @@ const routeIcon = (order: number, color: string) =>
   });
 
 async function fetchOSMPubs(): Promise<Pub[]> {
-  const query = `[out:json][timeout:25];node["amenity"="pub"](52.58,1.22,52.68,1.36);out body;`;
-  const endpoints = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  ];
-  for (const endpoint of endpoints) {
-    try {
-      const res = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`);
-      const text = await res.text();
-      if (text.trimStart().startsWith("<")) continue;
-      const data = JSON.parse(text);
-      return (data.elements ?? [])
-        .filter((el: { tags?: { name?: string } }) => el.tags?.name)
-        .map((el: { id: number; tags: { name: string }; lat: number; lon: number }) => ({
-          id: el.id, name: el.tags.name, lat: el.lat, lon: el.lon,
-        }))
-        .sort((a: Pub, b: Pub) => a.name.localeCompare(b.name));
-    } catch { continue; }
-  }
-  return [];
+  const res = await fetch('/api/pubs/osm');
+  const data = await res.json();
+  return (data as Pub[]).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function fetchRoute(waypoints: [number, number][]): Promise<[number, number][]> {
