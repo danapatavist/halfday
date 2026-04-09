@@ -158,6 +158,7 @@ export default function PubMap() {
   const [isNamingRoute, setIsNamingRoute] = useState(false);
   const [previewRouteId, setPreviewRouteId] = useState<string | null>(null);
   const [previewLegs, setPreviewLegs] = useState<{ distance: number; duration: number }[]>([]);
+  const [routeStats, setRouteStats] = useState<Map<string, { distance: number; duration: number }>>(new Map());
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -216,6 +217,23 @@ export default function PubMap() {
     if (enrichedStops.length < 2) { setRoutePath([]); return; }
     fetchRoute(enrichedStops.map((s) => [s.pub.lat, s.pub.lon] as [number, number])).then(setRoutePath);
   }, [stops]);
+
+  useEffect(() => {
+    if (loading || pubs.length === 0 || savedRoutes.length === 0) return;
+    savedRoutes.forEach((route) => {
+      const routePubs = route.stops.map((s) => pubs.find((p) => p.id === s.pubId)).filter(Boolean) as Pub[];
+      if (routePubs.length < 2) return;
+      const coords = routePubs.map((p) => `${p.lon},${p.lat}`).join(';');
+      fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=false`)
+        .then((r) => r.json())
+        .then((data) => {
+          const r = data.routes?.[0];
+          if (!r) return;
+          setRouteStats((prev) => new Map(prev).set(route.id, { distance: r.distance, duration: r.duration }));
+        })
+        .catch(() => {});
+    });
+  }, [loading, pubs.length, savedRoutes.length]);
 
   useEffect(() => {
     if (pendingPin) setTimeout(() => nameInputRef.current?.focus(), 50);
@@ -606,14 +624,24 @@ export default function PubMap() {
               Create your first route
             </div>
           )}
-          {savedRoutes.map((route) => (
-            <div key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => previewRoute(route)}>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
-                <p className="text-xs text-gray-400">{route.stops.length} stop{route.stops.length !== 1 ? "s" : ""} · {new Date(route.createdAt).toLocaleDateString()}</p>
+          {savedRoutes.map((route) => {
+            const stats = routeStats.get(route.id);
+            const distStr = stats ? (stats.distance < 1000 ? `${Math.round(stats.distance)}m` : `${(stats.distance / 1000).toFixed(1)}km`) : null;
+            const durStr = stats ? `${Math.round(stats.duration / 60)} min` : null;
+            return (
+              <div key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => previewRoute(route)}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {route.stops.length} stop{route.stops.length !== 1 ? "s" : ""}
+                    {distStr && <> · {distStr}</>}
+                    {durStr && <> · {durStr}</>}
+                    {" · "}{new Date(route.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
