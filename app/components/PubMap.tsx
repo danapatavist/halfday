@@ -154,6 +154,30 @@ export default function PubMap() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
+  // Persist unsaved route draft to localStorage
+  useEffect(() => {
+    if (!isEditing) return;
+    localStorage.setItem('halfday_draft', JSON.stringify({ routeName, stops, activeRouteId }));
+  }, [routeName, stops, activeRouteId, isEditing]);
+
+  // Restore draft on mount (runs after initial data load)
+  const draftRestoredRef = useRef(false);
+  useEffect(() => {
+    if (loading || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    try {
+      const raw = localStorage.getItem('halfday_draft');
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (draft.stops?.length > 0) {
+        setStops(draft.stops);
+        setRouteName(draft.routeName ?? '');
+        setActiveRouteId(draft.activeRouteId ?? null);
+        setIsNewRoute(!draft.activeRouteId);
+      }
+    } catch { /* ignore */ }
+  }, [loading]);
+
   const enrichedStops = stops
     .map((s) => ({ ...s, pub: pubs.find((p) => p.id === s.pubId) }))
     .filter((s): s is RouteStop & { pub: Pub } => !!s.pub);
@@ -252,13 +276,17 @@ export default function PubMap() {
         setActiveRouteId(created.id);
         setIsNewRoute(false);
       }
+      localStorage.removeItem('halfday_draft');
     } finally { setSaving(false); }
   }
 
   async function deleteRoute(id: string) {
     await fetch(`/api/routes/${id}`, { method: "DELETE" });
     setSavedRoutes((prev) => prev.filter((r) => r.id !== id));
-    if (activeRouteId === id) { setActiveRouteId(null); setIsNewRoute(false); setStops([]); setRouteName(""); }
+    if (activeRouteId === id) {
+      setActiveRouteId(null); setIsNewRoute(false); setStops([]); setRouteName("");
+      localStorage.removeItem('halfday_draft');
+    }
   }
 
   function shareRoute(routeId: string) {
