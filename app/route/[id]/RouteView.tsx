@@ -186,7 +186,7 @@ export default function RouteView({ route, customPubs }: Props) {
             center={[(from.lat + to.lat) / 2, (from.lon + to.lon) / 2]}
             zoom={15}
             style={{ height: '100%', width: '100%' }}
-            zoomControl={true}
+            zoomControl={false}
           >
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
