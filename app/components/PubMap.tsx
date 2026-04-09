@@ -264,7 +264,7 @@ export default function PubMap() {
   }
 
   async function saveRoute() {
-    if (!routeName.trim() || stops.length === 0) return;
+    if (!routeName.trim()) return;
     setSaving(true);
     try {
       const routeData = { name: routeName.trim(), stops };
@@ -367,7 +367,7 @@ export default function PubMap() {
           <div className="flex gap-1">
             <button
               onClick={saveRoute}
-              disabled={saving || !routeName.trim() || stops.length === 0}
+              disabled={saving || !routeName.trim()}
               className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
             >
               <Save size={12} />
