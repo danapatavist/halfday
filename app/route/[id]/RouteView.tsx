@@ -160,19 +160,19 @@ export default function RouteView({ route, customPubs }: Props) {
     const total = stops.length - 1;
 
     return (
-      <div className="fixed inset-0 bg-gray-950 text-white flex flex-col z-50">
+      <div className="fixed inset-0 bg-white text-gray-900 flex flex-col z-50">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 shrink-0">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3 shrink-0">
           <button
             onClick={() => setWalkingMode(false)}
-            className="text-gray-400 hover:text-white transition-colors text-sm"
+            className="text-gray-400 hover:text-gray-700 transition-colors text-sm"
           >
             ← Overview
           </button>
           <span className="flex-1 text-center text-sm text-gray-400">
             Leg {currentLeg + 1} of {total}
           </span>
-          <span className="text-sm font-medium text-amber-400">
+          <span className="text-sm font-medium text-amber-600">
             {route.name}
           </span>
         </div>
@@ -186,8 +186,8 @@ export default function RouteView({ route, customPubs }: Props) {
             zoomControl={true}
           >
             <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://openstreetmap.org/">OpenStreetMap</a>'
             />
             <FitToLeg from={from} to={to} />
             <Marker position={[from.lat, from.lon]} icon={routeIcon(currentLeg + 1, gradientColor(currentLeg, stops.length))} />
@@ -197,7 +197,7 @@ export default function RouteView({ route, customPubs }: Props) {
         </div>
 
         {/* Footer card */}
-        <div className="shrink-0 bg-gray-900 border-t border-gray-800 px-4 pt-4 pb-6">
+        <div className="shrink-0 bg-white border-t border-gray-200 px-4 pt-4 pb-6">
           {/* Pub names */}
           <div className="flex items-start gap-3 mb-3">
             <div className="flex-1 min-w-0">
@@ -214,7 +214,7 @@ export default function RouteView({ route, customPubs }: Props) {
                 <p className="text-xs text-gray-400 pl-8">until {fromStop.closeTime}</p>
               )}
             </div>
-            <div className="text-gray-600 mt-1">→</div>
+            <div className="text-gray-300 mt-1">→</div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span
@@ -236,27 +236,27 @@ export default function RouteView({ route, customPubs }: Props) {
             <button
               onClick={() => setCurrentLeg((l) => Math.max(0, l - 1))}
               disabled={currentLeg === 0}
-              className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-lg disabled:opacity-30 hover:bg-gray-700 transition-colors shrink-0"
+              className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg disabled:opacity-30 hover:bg-gray-200 transition-colors shrink-0"
             >
               ←
             </button>
             <div className="flex-1 text-center">
               {legPolyLoading ? (
-                <span className="text-xs text-gray-500">Loading route…</span>
+                <span className="text-xs text-gray-400">Loading route…</span>
               ) : leg ? (
-                <span className="text-sm text-gray-300">
+                <span className="text-sm text-gray-600">
                   👣 {Math.round(leg.duration / 60)} min · {leg.distance < 1000
                     ? `${Math.round(leg.distance)}m`
                     : `${(leg.distance / 1000).toFixed(1)}km`}
                 </span>
               ) : (
-                <span className="text-xs text-gray-600">···</span>
+                <span className="text-xs text-gray-300">···</span>
               )}
             </div>
             <button
               onClick={() => setCurrentLeg((l) => Math.min(total - 1, l + 1))}
               disabled={currentLeg === total - 1}
-              className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-lg disabled:opacity-30 hover:bg-gray-700 transition-colors shrink-0"
+              className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg disabled:opacity-30 hover:bg-gray-200 transition-colors shrink-0"
             >
               →
             </button>
@@ -268,8 +268,8 @@ export default function RouteView({ route, customPubs }: Props) {
 
   // ── Overview ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <div className="px-4 py-4 border-b border-gray-800 flex items-center gap-3">
+    <div className="min-h-screen bg-white text-gray-900">
+      <div className="px-4 py-4 border-b border-gray-200 flex items-center gap-3">
         <span className="text-2xl">🍺</span>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold">{route.name || 'Unnamed Route'}</h1>
@@ -296,8 +296,8 @@ export default function RouteView({ route, customPubs }: Props) {
             zoomControl={true}
           >
             <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://openstreetmap.org/">OpenStreetMap</a>'
             />
             {polyline.length > 1 && (
               <Polyline positions={polyline} color="#6366f1" weight={3} opacity={0.8} />
@@ -318,7 +318,7 @@ export default function RouteView({ route, customPubs }: Props) {
       <div className="p-4 max-w-lg mx-auto w-full">
         {stopsWithTimes.map((stop, i) => (
           <div key={stop.id}>
-            <div className="flex items-center gap-3 bg-gray-900 rounded-lg px-3 py-3">
+            <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-3">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
                 style={{ background: gradientColor(i, stopsWithTimes.length) }}
@@ -326,7 +326,7 @@ export default function RouteView({ route, customPubs }: Props) {
                 {i + 1}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">{stop.name}</div>
+                <div className="font-medium text-sm truncate text-gray-900">{stop.name}</div>
                 {(stop.openTime || stop.closeTime) && (
                   <div className="text-xs text-gray-400">
                     {stop.openTime && `from ${stop.openTime}`}
@@ -337,7 +337,7 @@ export default function RouteView({ route, customPubs }: Props) {
               </div>
             </div>
             {i < stopsWithTimes.length - 1 && (
-              <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-gray-500">
+              <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-gray-400">
                 <span>👣</span>
                 {legs[i] ? (
                   <span>
@@ -353,7 +353,7 @@ export default function RouteView({ route, customPubs }: Props) {
           </div>
         ))}
         {!loading && stops.length === 0 && (
-          <p className="text-sm text-gray-500 text-center py-4">No stops found.</p>
+          <p className="text-sm text-gray-400 text-center py-4">No stops found.</p>
         )}
       </div>
     </div>
