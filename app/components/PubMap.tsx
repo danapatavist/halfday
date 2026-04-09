@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { Clock, Trash2, Plus, Save, X, Share2 } from "lucide-react";
+import { Clock, Trash2, Plus, Save, X, Share2, Printer } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 
@@ -529,7 +529,7 @@ export default function PubMap() {
                 {copied === route.id ? <span className="text-xs text-blue-500">✓</span> : <Share2 size={14} />}
               </button>
               <button onClick={handlePrint} disabled={route.stops.length < 2} title="Print" className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 transition-colors">
-                <Save size={14} />
+                <Printer size={14} />
               </button>
               <button onClick={() => deleteRoute(route.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
                 <Trash2 size={14} />
