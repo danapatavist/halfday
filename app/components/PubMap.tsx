@@ -290,6 +290,10 @@ export default function PubMap() {
         setIsNewRoute(false);
       }
       localStorage.removeItem('halfday_draft');
+      setActiveRouteId(null);
+      setIsNewRoute(false);
+      setStops([]);
+      setRouteName("");
     } finally { setSaving(false); }
   }
 
