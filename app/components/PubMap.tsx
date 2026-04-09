@@ -36,9 +36,9 @@ type Tab = "routes" | "pubs";
 
 const dotIcon = L.divIcon({
   className: "",
-  html: `<div style="width:10px;height:10px;background:#9ca3af;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
-  iconSize: [10, 10],
-  iconAnchor: [5, 5],
+  html: `<div style="width:26px;height:26px;background:#d97706;border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.45);font-size:13px;line-height:1;">🍺</div>`,
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
 });
 
 const pendingIcon = L.divIcon({
