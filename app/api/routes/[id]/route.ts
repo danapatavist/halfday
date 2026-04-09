@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getRoutes, setRoutes } from '@/lib/db';
 
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const routes = await getRoutes();
+  const route = routes.find((r) => r.id === id);
+  if (!route) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json(route);
+}
+
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }

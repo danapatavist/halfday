@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { Clock, Trash2, Plus, Save, X } from "lucide-react";
+import { Clock, Trash2, Plus, Save, X, Share2 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 
@@ -32,7 +32,7 @@ interface PendingPin {
   lon: number;
 }
 
-type Tab = "route" | "pubs" | "saved";
+type Tab = "routes" | "pubs";
 
 const dotIcon = L.divIcon({
   className: "",
@@ -77,15 +77,10 @@ async function fetchOSMPubs(): Promise<Pub[]> {
       return (data.elements ?? [])
         .filter((el: { tags?: { name?: string } }) => el.tags?.name)
         .map((el: { id: number; tags: { name: string }; lat: number; lon: number }) => ({
-          id: el.id,
-          name: el.tags.name,
-          lat: el.lat,
-          lon: el.lon,
+          id: el.id, name: el.tags.name, lat: el.lat, lon: el.lon,
         }))
         .sort((a: Pub, b: Pub) => a.name.localeCompare(b.name));
-    } catch {
-      continue;
-    }
+    } catch { continue; }
   }
   return [];
 }
@@ -93,9 +88,7 @@ async function fetchOSMPubs(): Promise<Pub[]> {
 async function fetchRoute(waypoints: [number, number][]): Promise<[number, number][]> {
   if (waypoints.length < 2) return [];
   const coords = waypoints.map(([lat, lon]) => `${lon},${lat}`).join(";");
-  const res = await fetch(
-    `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=full&geometries=geojson`
-  );
+  const res = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=full&geometries=geojson`);
   const data = await res.json();
   if (!data.routes?.[0]) return [];
   return data.routes[0].geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon]);
@@ -120,50 +113,34 @@ function FitToStops({ pubs }: { pubs: Pub[] }) {
 }
 
 function MapClickHandler({ addMode, onMapClick }: { addMode: boolean; onMapClick: (lat: number, lon: number) => void }) {
-  useMapEvents({
-    click(e) {
-      if (addMode) onMapClick(e.latlng.lat, e.latlng.lng);
-    },
-  });
+  useMapEvents({ click(e) { if (addMode) onMapClick(e.latlng.lat, e.latlng.lng); } });
   return null;
 }
 
 function LegMapFit({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
   useEffect(() => {
-    const bounds = L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]);
-    map.fitBounds(bounds, { padding: [28, 28] });
+    map.fitBounds(L.latLngBounds([[from.lat, from.lon], [to.lat, to.lon]]), { padding: [28, 28] });
   }, []);
   return null;
 }
 
 function PrintLegMap({ from, to, fromOrder, toOrder, fromColor, toColor, routePath }: {
-  from: Pub; to: Pub;
-  fromOrder: number; toOrder: number;
-  fromColor: string; toColor: string;
-  routePath: [number, number][];
+  from: Pub; to: Pub; fromOrder: number; toOrder: number;
+  fromColor: string; toColor: string; routePath: [number, number][];
 }) {
-  const center: [number, number] = [(from.lat + to.lat) / 2, (from.lon + to.lon) / 2];
   return (
     <MapContainer
-      center={center}
-      zoom={15}
-      zoomControl={false}
-      dragging={false}
-      scrollWheelZoom={false}
-      doubleClickZoom={false}
-      touchZoom={false}
-      keyboard={false}
-      attributionControl={false}
+      center={[(from.lat + to.lat) / 2, (from.lon + to.lon) / 2]} zoom={15}
+      zoomControl={false} dragging={false} scrollWheelZoom={false} doubleClickZoom={false}
+      touchZoom={false} keyboard={false} attributionControl={false}
       style={{ height: "108mm", width: "93.5mm" }}
     >
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <LegMapFit from={from} to={to} />
       <Marker position={[from.lat, from.lon]} icon={routeIcon(fromOrder, fromColor)} />
       <Marker position={[to.lat, to.lon]} icon={routeIcon(toOrder, toColor)} />
-      {routePath.length > 1 && (
-        <Polyline positions={routePath} color="#2563eb" weight={4} opacity={0.8} />
-      )}
+      {routePath.length > 1 && <Polyline positions={routePath} color="#2563eb" weight={4} opacity={0.8} />}
     </MapContainer>
   );
 }
@@ -174,7 +151,7 @@ export default function PubMap() {
   const [stops, setStops] = useState<RouteStop[]>([]);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>("route");
+  const [activeTab, setActiveTab] = useState<Tab>("routes");
   const [pubSearch, setPubSearch] = useState("");
   const [addMode, setAddMode] = useState(false);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
@@ -187,6 +164,10 @@ export default function PubMap() {
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [routePath, setRoutePath] = useState<[number, number][]>([]);
   const [saving, setSaving] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  // "new" = unsaved new route is active; null = no route selected
+  const [isNewRoute, setIsNewRoute] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -198,53 +179,53 @@ export default function PubMap() {
   const stopIds = new Set(stops.map((s) => s.pubId));
   const stopOrderMap = new Map(enrichedStops.map((s, i) => [s.pubId, i + 1]));
 
-  // Load pubs and routes from file-backed API
+  const isEditing = isNewRoute || activeRouteId !== null;
+
   useEffect(() => {
     Promise.all([
       fetch("/api/pubs").then((r) => r.json()),
       fetch("/api/routes").then((r) => r.json()),
     ])
-      .then(([pubsData, routesData]) => {
-        setPubs(pubsData);
-        setSavedRoutes(routesData);
-        setLoading(false);
-      })
+      .then(([pubsData, routesData]) => { setPubs(pubsData); setSavedRoutes(routesData); setLoading(false); })
       .catch(() => setLoading(false));
 
-    // Fetch fresh pubs from OSM and save any new ones to the file
-    fetchOSMPubs()
-      .then((osmPubs) => {
-        fetch("/api/pubs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(osmPubs),
-        });
-        setPubs((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id));
-          const newPubs = osmPubs.filter((p) => !existingIds.has(p.id));
-          return [...prev, ...newPubs];
-        });
-      })
-      .catch(() => {});
+    fetchOSMPubs().then((osmPubs) => {
+      fetch("/api/pubs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(osmPubs) });
+      setPubs((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        return [...prev, ...osmPubs.filter((p) => !existingIds.has(p.id))];
+      });
+    }).catch(() => {});
   }, []);
 
-  // Fetch walking route when stops change
   useEffect(() => {
-    if (enrichedStops.length < 2) {
-      setRoutePath([]);
-      return;
-    }
-    const waypoints = enrichedStops.map((s) => [s.pub.lat, s.pub.lon] as [number, number]);
-    fetchRoute(waypoints).then(setRoutePath);
+    if (enrichedStops.length < 2) { setRoutePath([]); return; }
+    fetchRoute(enrichedStops.map((s) => [s.pub.lat, s.pub.lon] as [number, number])).then(setRoutePath);
   }, [stops]);
 
   useEffect(() => {
     if (pendingPin) setTimeout(() => nameInputRef.current?.focus(), 50);
   }, [pendingPin]);
 
+  function startNewRoute() {
+    setRouteName("");
+    setStops([]);
+    setActiveRouteId(null);
+    setIsNewRoute(true);
+  }
+
+  function loadRoute(route: SavedRoute) {
+    setRouteName(route.name);
+    setStops(route.stops);
+    setActiveRouteId(route.id);
+    setIsNewRoute(false);
+    setMobileOpen(false);
+  }
+
   function addToRoute(pubId: number) {
     if (stopIds.has(pubId)) return;
     setStops((prev) => [...prev, { pubId, openTime: "11:00", closeTime: "23:00" }]);
+    if (!isEditing) setIsNewRoute(true);
   }
 
   function removeFromRoute(pubId: number) {
@@ -274,83 +255,53 @@ export default function PubMap() {
   async function saveRoute() {
     if (!routeName.trim() || stops.length === 0) return;
     setSaving(true);
-    const routeData = { name: routeName.trim(), stops };
     try {
+      const routeData = { name: routeName.trim(), stops };
       if (activeRouteId) {
         const updated = await fetch(`/api/routes/${activeRouteId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(routeData),
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(routeData),
         }).then((r) => r.json());
         setSavedRoutes((prev) => prev.map((r) => (r.id === activeRouteId ? updated : r)));
       } else {
         const created = await fetch("/api/routes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(routeData),
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(routeData),
         }).then((r) => r.json());
         setSavedRoutes((prev) => [...prev, created]);
         setActiveRouteId(created.id);
+        setIsNewRoute(false);
       }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function loadRoute(route: SavedRoute) {
-    setRouteName(route.name);
-    setStops(route.stops);
-    setActiveRouteId(route.id);
-    setActiveTab("route");
+    } finally { setSaving(false); }
   }
 
   async function deleteRoute(id: string) {
     await fetch(`/api/routes/${id}`, { method: "DELETE" });
     setSavedRoutes((prev) => prev.filter((r) => r.id !== id));
-    if (activeRouteId === id) setActiveRouteId(null);
+    if (activeRouteId === id) { setActiveRouteId(null); setIsNewRoute(false); setStops([]); setRouteName(""); }
   }
 
-  function newRoute() {
-    setRouteName("");
-    setStops([]);
-    setActiveRouteId(null);
+  function shareRoute(routeId: string) {
+    navigator.clipboard.writeText(`${window.location.origin}/route/${routeId}`);
+    setCopied(routeId);
+    setTimeout(() => setCopied(null), 2000);
   }
 
-  function handleMapClick(lat: number, lon: number) {
-    setPendingPin({ lat, lon });
-    setNewPubName("");
-  }
+  function handleMapClick(lat: number, lon: number) { setPendingPin({ lat, lon }); setNewPubName(""); }
 
   async function confirmNewPub() {
     if (!pendingPin || !newPubName.trim()) return;
-    const newPub: Pub = {
-      id: Date.now(),
-      name: newPubName.trim(),
-      lat: pendingPin.lat,
-      lon: pendingPin.lon,
-      custom: true,
-    };
-    await fetch("/api/pubs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([newPub]),
-    });
+    const newPub: Pub = { id: Date.now(), name: newPubName.trim(), lat: pendingPin.lat, lon: pendingPin.lon, custom: true };
+    await fetch("/api/pubs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify([newPub]) });
     setPubs((prev) => [...prev, newPub]);
-    setPendingPin(null);
-    setNewPubName("");
-    setAddMode(false);
+    setPendingPin(null); setNewPubName(""); setAddMode(false);
   }
 
-  async function deletePub(id: number) {
+  async function deleteCustomPub(id: number) {
     await fetch(`/api/pubs/${id}`, { method: "DELETE" });
     setPubs((prev) => prev.filter((p) => p.id !== id));
     setStops((prev) => prev.filter((s) => s.pubId !== id));
   }
 
-  function cancelNewPub() {
-    setPendingPin(null);
-    setNewPubName("");
-  }
+  function cancelNewPub() { setPendingPin(null); setNewPubName(""); }
 
   async function handlePrint() {
     const routes = await Promise.all(
@@ -361,337 +312,276 @@ export default function PubMap() {
     );
     setLegRoutes(routes);
     setIsPrinting(true);
-    setTimeout(() => {
-      window.print();
-      setIsPrinting(false);
-      setLegRoutes([]);
-    }, 2500);
+    setTimeout(() => { window.print(); setIsPrinting(false); setLegRoutes([]); }, 2500);
   }
 
-  const totalDistance =
-    routePath.length > 1
-      ? (() => {
-          let d = 0;
-          for (let i = 1; i < routePath.length; i++) {
-            const [lat1, lon1] = routePath[i - 1];
-            const [lat2, lon2] = routePath[i];
-            const R = 6371000;
-            const dLat = ((lat2 - lat1) * Math.PI) / 180;
-            const dLon = ((lon2 - lon1) * Math.PI) / 180;
-            const a =
-              Math.sin(dLat / 2) ** 2 +
-              Math.cos((lat1 * Math.PI) / 180) *
-                Math.cos((lat2 * Math.PI) / 180) *
-                Math.sin(dLon / 2) ** 2;
-            d += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          }
-          return d;
-        })()
-      : 0;
+  const totalDistance = routePath.length > 1 ? (() => {
+    let d = 0;
+    for (let i = 1; i < routePath.length; i++) {
+      const [lat1, lon1] = routePath[i - 1];
+      const [lat2, lon2] = routePath[i];
+      const R = 6371000;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+      d += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    return d;
+  })() : 0;
 
   const filteredPubs = pubs
     .filter((p) => p.name.toLowerCase().includes(pubSearch.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const tabClass = (tab: Tab) =>
-    `flex-1 py-2.5 text-xs font-medium transition-colors ${
-      activeTab === tab
-        ? "text-amber-700 border-b-2 border-amber-600"
-        : "text-gray-400 hover:text-gray-600"
-    }`;
+  const tabBtnClass = (tab: Tab) =>
+    `flex-1 py-2.5 text-xs font-medium transition-colors ${activeTab === tab ? "text-amber-700 border-b-2 border-amber-600" : "text-gray-400 hover:text-gray-600"}`;
+
+  // ── Route editor (shown inline when a route is active) ───────────────────────
+
+  function renderRouteEditor() {
+    return (
+      <div className="border-b border-amber-200 bg-amber-50">
+        <div className="p-3 space-y-2">
+          <input
+            type="text"
+            placeholder="Name this route..."
+            value={routeName}
+            onChange={(e) => setRouteName(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none focus:border-amber-400 bg-white"
+          />
+          <div className="flex gap-1">
+            <button
+              onClick={saveRoute}
+              disabled={saving || !routeName.trim() || stops.length === 0}
+              className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
+            >
+              <Save size={12} />
+              {saving ? "Saving..." : activeRouteId ? "Update" : "Save"}
+            </button>
+            <button onClick={handlePrint} disabled={enrichedStops.length < 2} className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors">Print</button>
+            {activeRouteId && (
+              <button onClick={() => shareRoute(activeRouteId)} title="Copy share link" className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-600 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                {copied === activeRouteId ? "✓" : <Share2 size={13} />}
+              </button>
+            )}
+            {activeRouteId && (
+              <button onClick={() => deleteRoute(activeRouteId)} title="Delete route" className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-400 border border-gray-200 hover:bg-red-50 hover:text-red-500 transition-colors">
+                <Trash2 size={13} />
+              </button>
+            )}
+            <button
+              onClick={() => { setActiveRouteId(null); setIsNewRoute(false); setStops([]); setRouteName(""); }}
+              title="Close"
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-white text-gray-400 border border-gray-200 hover:bg-gray-100 transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </div>
+          {enrichedStops.length > 0 && (
+            <p className="text-xs text-gray-500">
+              {enrichedStops.length} stop{enrichedStops.length !== 1 ? "s" : ""}
+              {totalDistance > 0 ? ` · ${totalDistance < 1000 ? `${Math.round(totalDistance)}m` : `${(totalDistance / 1000).toFixed(1)}km`}` : ""}
+            </p>
+          )}
+        </div>
+
+        {enrichedStops.length === 0 ? (
+          <div className="px-3 pb-3 text-xs text-gray-500 text-center">
+            Go to the <button onClick={() => setActiveTab("pubs")} className="text-amber-600 underline">Pubs tab</button> to add stops
+          </div>
+        ) : (
+          <ul>
+            {enrichedStops.map((stop, i) => {
+              const color = gradientColor(i, enrichedStops.length);
+              const isDragOver = dragOverId === stop.pubId;
+              return (
+                <li
+                  key={stop.pubId} draggable
+                  onDragStart={() => onDragStart(stop.pubId)}
+                  onDragOver={(e) => onDragOver(e, stop.pubId)}
+                  onDrop={() => onDrop(stop.pubId)}
+                  onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm border-t border-amber-100 ${isDragOver ? "bg-amber-100" : ""} ${draggingId === stop.pubId ? "opacity-40" : ""}`}
+                >
+                  <span className="text-amber-300 text-xs cursor-grab select-none">⠿</span>
+                  <span style={{ background: color }} className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Clock size={11} className="text-gray-300 flex-shrink-0" />
+                      <input type="time" value={stop.openTime} onChange={(e) => updateStopTime(stop.pubId, "openTime", e.target.value)} className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" />
+                      <span className="text-xs text-gray-300">–</span>
+                      <input type="time" value={stop.closeTime} onChange={(e) => updateStopTime(stop.pubId, "closeTime", e.target.value)} className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" />
+                    </div>
+                  </div>
+                  <button onClick={() => removeFromRoute(stop.pubId)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><X size={14} /></button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // ── Tab panels ───────────────────────────────────────────────────────────────
+
+  function renderRoutesTab() {
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        <div className="p-3 border-b border-gray-100">
+          <button onClick={startNewRoute} className="w-full text-xs py-2 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 transition-colors">
+            + New Route
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {/* Unsaved new route editor */}
+          {isNewRoute && renderRouteEditor()}
+
+          {/* Saved routes */}
+          {savedRoutes.length === 0 && !isNewRoute && (
+            <div className="p-6 text-center text-sm text-gray-400">
+              <div className="text-2xl mb-2">🍺</div>
+              Create your first route
+            </div>
+          )}
+          {savedRoutes.map((route) => (
+            <div key={route.id}>
+              {activeRouteId === route.id ? (
+                renderRouteEditor()
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => loadRoute(route)}>
+                    <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
+                    <p className="text-xs text-gray-400">{route.stops.length} stop{route.stops.length !== 1 ? "s" : ""} · {new Date(route.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <button onClick={() => shareRoute(route.id)} title="Copy share link" className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                    {copied === route.id ? <span className="text-xs text-blue-500">✓</span> : <Share2 size={14} />}
+                  </button>
+                  <button onClick={() => deleteRoute(route.id)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderPubsTab() {
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        {addMode && !pendingPin && (
+          <div className="bg-violet-50 border-b border-violet-200 px-4 py-2 text-xs text-violet-700">
+            Click anywhere on the map to place a pub
+          </div>
+        )}
+        {pendingPin && (
+          <div className="bg-violet-50 border-b border-violet-200 p-3 space-y-2">
+            <p className="text-xs text-violet-700 font-medium">Name this pub</p>
+            <input
+              ref={nameInputRef} type="text" placeholder="e.g. The Gardeners Arms" value={newPubName}
+              onChange={(e) => setNewPubName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirmNewPub(); if (e.key === "Escape") cancelNewPub(); }}
+              className="w-full px-3 py-2 text-sm border border-violet-300 rounded-lg focus:outline-none focus:border-violet-500 bg-white"
+            />
+            <div className="flex gap-2">
+              <button onClick={confirmNewPub} disabled={!newPubName.trim()} className="flex-1 text-xs bg-violet-600 text-white py-1.5 rounded-lg disabled:opacity-40 hover:bg-violet-700 transition-colors">Add pub</button>
+              <button onClick={cancelNewPub} className="flex-1 text-xs bg-gray-100 text-gray-600 py-1.5 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+            </div>
+          </div>
+        )}
+        <div className="p-3 border-b border-gray-200 flex gap-2">
+          <input
+            type="text" placeholder="Search pubs..." value={pubSearch}
+            onChange={(e) => setPubSearch(e.target.value)}
+            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-amber-400"
+          />
+          <button
+            onClick={() => { setAddMode((v) => !v); setPendingPin(null); setNewPubName(""); }}
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${addMode ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+          >
+            + Add
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="p-4 text-sm text-gray-400">Loading pubs...</div>
+          ) : (
+            <ul>
+              {filteredPubs.map((pub) => {
+                const order = stopOrderMap.get(pub.id);
+                const color = order !== undefined ? gradientColor(order - 1, enrichedStops.length) : undefined;
+                return (
+                  <li key={pub.id} className="flex items-center gap-2 px-3 py-2 text-sm border-b border-gray-50">
+                    <span className="flex-1 truncate text-gray-700">
+                      {pub.name}
+                      {pub.custom && <span className="ml-1 text-xs text-violet-500">(custom)</span>}
+                    </span>
+                    {order !== undefined ? (
+                      <span style={{ background: color }} className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{order}</span>
+                    ) : (
+                      <button onClick={() => addToRoute(pub.id)} title="Add to route" className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                        <Plus size={14} />
+                      </button>
+                    )}
+                    {/* Only custom pubs can be deleted */}
+                    {pub.custom && (
+                      <button onClick={() => deleteCustomPub(pub.id)} title="Delete custom pub" className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <div className="p-3 border-t border-gray-200 text-xs text-gray-400 text-center">
+          {pubs.length} pubs · data from OpenStreetMap
+        </div>
+      </div>
+    );
+  }
+
+  function renderTabContent() {
+    return activeTab === "routes" ? renderRoutesTab() : renderPubsTab();
+  }
+
+  function renderTabBar() {
+    return (
+      <div className="flex border-b border-gray-200">
+        <button className={tabBtnClass("routes")} onClick={() => setActiveTab("routes")}>
+          Routes {savedRoutes.length > 0 && `(${savedRoutes.length})`}
+        </button>
+        <button className={tabBtnClass("pubs")} onClick={() => setActiveTab("pubs")}>
+          Pubs {!loading && `(${pubs.length})`}
+        </button>
+      </div>
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
 
   return (
     <>
-      <div className="flex h-screen w-screen" style={{ display: isPrinting ? "none" : "flex" }}>
-        {/* Sidebar */}
-        <div className="print:hidden w-80 flex-shrink-0 flex flex-col bg-white border-r border-gray-200 z-10">
-          {/* Header */}
+      <div className="flex h-screen w-screen overflow-hidden" style={{ display: isPrinting ? "none" : "flex" }}>
+
+        {/* Desktop sidebar */}
+        <div className="print:hidden hidden md:flex md:w-80 md:flex-shrink-0 flex-col bg-white border-r border-gray-200 z-10">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h1 className="text-xl font-bold text-amber-700">🍺 Halfday</h1>
             <button
               onClick={() => setShowRoute((v) => !v)}
-              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
-                showRoute ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
-              }`}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${showRoute ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}
             >
               {showRoute ? "Route on" : "Route off"}
             </button>
           </div>
-
-          {/* Tabs */}
-          <div className="flex border-b border-gray-200">
-            <button className={tabClass("route")} onClick={() => setActiveTab("route")}>Route</button>
-            <button className={tabClass("pubs")} onClick={() => setActiveTab("pubs")}>
-              Pubs {!loading && `(${pubs.length})`}
-            </button>
-            <button className={tabClass("saved")} onClick={() => setActiveTab("saved")}>
-              Saved {savedRoutes.length > 0 && `(${savedRoutes.length})`}
-            </button>
-          </div>
-
-          {/* Route tab */}
-          {activeTab === "route" && (
-            <div className="flex flex-col flex-1 min-h-0">
-              <div className="p-3 border-b border-gray-100 space-y-2">
-                <input
-                  type="text"
-                  placeholder="Name this route..."
-                  value={routeName}
-                  onChange={(e) => setRouteName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-amber-400"
-                />
-                <div className="flex gap-1">
-                  <button
-                    onClick={saveRoute}
-                    disabled={saving || !routeName.trim() || stops.length === 0}
-                    className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
-                  >
-                    <Save size={12} />
-                    {saving ? "Saving..." : activeRouteId ? "Update" : "Save"}
-                  </button>
-                  <button
-                    onClick={handlePrint}
-                    disabled={enrichedStops.length < 2}
-                    className="flex-1 text-xs py-1.5 rounded-lg font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 transition-colors"
-                  >
-                    Print
-                  </button>
-                  <button
-                    onClick={newRoute}
-                    title="Start a new route"
-                    className="px-2.5 py-1.5 rounded-lg text-xs bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
-                  >
-                    New
-                  </button>
-                </div>
-                {enrichedStops.length > 0 && (
-                  <p className="text-xs text-gray-400">
-                    {enrichedStops.length} stop{enrichedStops.length !== 1 ? "s" : ""}
-                    {totalDistance > 0
-                      ? ` · ${totalDistance < 1000 ? `${Math.round(totalDistance)}m` : `${(totalDistance / 1000).toFixed(1)}km`}`
-                      : ""}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {enrichedStops.length === 0 ? (
-                  <div className="p-6 text-center text-sm text-gray-400">
-                    <div className="text-2xl mb-2">🗺️</div>
-                    Add pubs from the{" "}
-                    <button onClick={() => setActiveTab("pubs")} className="text-amber-600 underline">
-                      Pubs tab
-                    </button>
-                    , or click grey markers on the map
-                  </div>
-                ) : (
-                  <ul>
-                    {enrichedStops.map((stop, i) => {
-                      const color = gradientColor(i, enrichedStops.length);
-                      const isDragOver = dragOverId === stop.pubId;
-                      return (
-                        <li
-                          key={stop.pubId}
-                          draggable
-                          onDragStart={() => onDragStart(stop.pubId)}
-                          onDragOver={(e) => onDragOver(e, stop.pubId)}
-                          onDrop={() => onDrop(stop.pubId)}
-                          onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
-                          className={`flex items-center gap-2 px-3 py-2 text-sm border-b border-gray-50 transition-colors ${
-                            isDragOver ? "bg-blue-50" : ""
-                          } ${draggingId === stop.pubId ? "opacity-40" : ""}`}
-                        >
-                          <span className="text-gray-400 text-xs cursor-grab select-none">⠿</span>
-                          <span
-                            style={{ background: color }}
-                            className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"
-                          >
-                            {i + 1}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <span className="block truncate text-sm text-gray-700">{stop.pub.name}</span>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <Clock size={11} className="text-gray-300 flex-shrink-0" />
-                              <input
-                                type="time"
-                                value={stop.openTime}
-                                onChange={(e) => updateStopTime(stop.pubId, "openTime", e.target.value)}
-                                className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
-                              />
-                              <span className="text-xs text-gray-300">–</span>
-                              <input
-                                type="time"
-                                value={stop.closeTime}
-                                onChange={(e) => updateStopTime(stop.pubId, "closeTime", e.target.value)}
-                                className="text-xs text-gray-400 bg-transparent border-none outline-none w-[3.5rem] cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden"
-                              />
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => removeFromRoute(stop.pubId)}
-                            className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Pubs tab */}
-          {activeTab === "pubs" && (
-            <div className="flex flex-col flex-1 min-h-0">
-              {addMode && !pendingPin && (
-                <div className="bg-violet-50 border-b border-violet-200 px-4 py-2 text-xs text-violet-700">
-                  Click anywhere on the map to place a pub
-                </div>
-              )}
-              {pendingPin && (
-                <div className="bg-violet-50 border-b border-violet-200 p-3 space-y-2">
-                  <p className="text-xs text-violet-700 font-medium">Name this pub</p>
-                  <input
-                    ref={nameInputRef}
-                    type="text"
-                    placeholder="e.g. The Gardeners Arms"
-                    value={newPubName}
-                    onChange={(e) => setNewPubName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") confirmNewPub();
-                      if (e.key === "Escape") cancelNewPub();
-                    }}
-                    className="w-full px-3 py-2 text-sm border border-violet-300 rounded-lg focus:outline-none focus:border-violet-500 bg-white"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={confirmNewPub}
-                      disabled={!newPubName.trim()}
-                      className="flex-1 text-xs bg-violet-600 text-white py-1.5 rounded-lg disabled:opacity-40 hover:bg-violet-700 transition-colors"
-                    >
-                      Add pub
-                    </button>
-                    <button
-                      onClick={cancelNewPub}
-                      className="flex-1 text-xs bg-gray-100 text-gray-600 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 border-b border-gray-200 flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Search pubs..."
-                  value={pubSearch}
-                  onChange={(e) => setPubSearch(e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-amber-400"
-                />
-                <button
-                  onClick={() => { setAddMode((v) => !v); setPendingPin(null); setNewPubName(""); }}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                    addMode ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  + Add
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {loading ? (
-                  <div className="p-4 text-sm text-gray-400">Loading pubs...</div>
-                ) : (
-                  <ul>
-                    {filteredPubs.map((pub) => {
-                      const order = stopOrderMap.get(pub.id);
-                      const color = order !== undefined ? gradientColor(order - 1, enrichedStops.length) : undefined;
-                      return (
-                        <li key={pub.id} className="flex items-center gap-2 px-3 py-2 text-sm border-b border-gray-50">
-                          <span className="flex-1 truncate text-gray-700">
-                            {pub.name}
-                            {pub.custom && <span className="ml-1 text-xs text-violet-500">(custom)</span>}
-                          </span>
-                          {order !== undefined ? (
-                            <span
-                              style={{ background: color }}
-                              className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0 font-bold"
-                            >
-                              {order}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => addToRoute(pub.id)}
-                              title="Add to route"
-                              className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                            >
-                              <Plus size={14} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deletePub(pub.id)}
-                            title="Remove from pub list"
-                            className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              <div className="p-3 border-t border-gray-200 text-xs text-gray-400 text-center">
-                {pubs.length} pubs · data from OpenStreetMap
-              </div>
-            </div>
-          )}
-
-          {/* Saved tab */}
-          {activeTab === "saved" && (
-            <div className="flex-1 overflow-y-auto">
-              {savedRoutes.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-400">
-                  <div className="text-2xl mb-2">📋</div>
-                  No saved routes yet
-                </div>
-              ) : (
-                <ul>
-                  {savedRoutes.map((route) => (
-                    <li key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-700 truncate">{route.name}</p>
-                        <p className="text-xs text-gray-400">
-                          {route.stops.length} stop{route.stops.length !== 1 ? "s" : ""} ·{" "}
-                          {new Date(route.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => loadRoute(route)}
-                        className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
-                          activeRouteId === route.id
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-gray-100 text-gray-600 hover:bg-amber-50 hover:text-amber-700"
-                        }`}
-                      >
-                        {activeRouteId === route.id ? "Loaded" : "Load"}
-                      </button>
-                      <button
-                        onClick={() => deleteRoute(route.id)}
-                        className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+          {renderTabBar()}
+          {renderTabContent()}
         </div>
 
         {/* Map */}
@@ -704,120 +594,124 @@ export default function PubMap() {
             <MapRefCapture mapRef={mapRef} />
             <MapClickHandler addMode={addMode} onMapClick={handleMapClick} />
             <FitToStops pubs={enrichedStops.map((s) => s.pub)} />
-
             {pubs.map((pub) => {
               const order = stopOrderMap.get(pub.id);
               const color = order !== undefined ? gradientColor(order - 1, enrichedStops.length) : undefined;
-              const icon = order !== undefined ? routeIcon(order, color!) : dotIcon;
               return (
                 <Marker
-                  key={pub.id}
-                  position={[pub.lat, pub.lon]}
-                  icon={icon}
-                  eventHandlers={{
-                    click: () => {
-                      if (!stopIds.has(pub.id)) addToRoute(pub.id);
-                    },
-                  }}
+                  key={pub.id} position={[pub.lat, pub.lon]}
+                  icon={order !== undefined ? routeIcon(order, color!) : dotIcon}
+                  eventHandlers={{ click: () => { if (!stopIds.has(pub.id)) addToRoute(pub.id); } }}
                 >
                   <Popup>
                     <div className="text-sm space-y-1">
                       <strong>{pub.name}</strong>
                       {pub.custom && <span className="ml-1 text-xs text-violet-600">(custom)</span>}
                       {stopIds.has(pub.id) ? (
-                        <button
-                          onClick={() => removeFromRoute(pub.id)}
-                          className="block text-xs text-red-500 underline"
-                        >
-                          Remove from route
-                        </button>
+                        <button onClick={() => removeFromRoute(pub.id)} className="block text-xs text-red-500 underline">Remove from route</button>
                       ) : (
-                        <button
-                          onClick={() => addToRoute(pub.id)}
-                          className="block text-xs text-amber-600 underline"
-                        >
-                          Add to route
-                        </button>
+                        <button onClick={() => addToRoute(pub.id)} className="block text-xs text-amber-600 underline">Add to route</button>
                       )}
                     </div>
                   </Popup>
                 </Marker>
               );
             })}
-
             {pendingPin && <Marker position={[pendingPin.lat, pendingPin.lon]} icon={pendingIcon} />}
-
-            {showRoute && routePath.length > 1 && (
-              <Polyline positions={routePath} color="#2563eb" weight={4} opacity={0.7} />
-            )}
+            {showRoute && routePath.length > 1 && <Polyline positions={routePath} color="#2563eb" weight={4} opacity={0.7} />}
           </MapContainer>
         </div>
+
+        {/* Mobile: bottom tab bar */}
+        <div className="md:hidden print:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 flex">
+          {(["routes", "pubs"] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setMobileOpen(true); }}
+              className={`flex-1 py-3 text-xs font-medium capitalize transition-colors ${activeTab === tab && mobileOpen ? "text-amber-700" : "text-gray-500"}`}
+            >
+              {tab === "routes"
+                ? `Routes${savedRoutes.length > 0 ? ` (${savedRoutes.length})` : ""}`
+                : `Pubs${!loading ? ` (${pubs.length})` : ""}`}
+            </button>
+          ))}
+        </div>
+
+        {/* Mobile: bottom sheet */}
+        {mobileOpen && (
+          <div className="md:hidden print:hidden fixed inset-0 z-40" onClick={() => setMobileOpen(false)}>
+            <div
+              className="absolute inset-x-0 bottom-0 bg-white rounded-t-2xl shadow-2xl flex flex-col"
+              style={{ height: "72vh" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+                <div className="flex gap-1">
+                  {(["routes", "pubs"] as Tab[]).map((tab) => (
+                    <button key={tab} onClick={() => setActiveTab(tab)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${activeTab === tab ? "bg-amber-100 text-amber-700" : "text-gray-500 hover:bg-gray-100"}`}>
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setMobileOpen(false)} className="p-1 rounded text-gray-400 hover:bg-gray-100">
+                  <X size={18} />
+                </button>
+              </div>
+              {renderTabContent()}
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Print layout */}
-      {isPrinting &&
-        (() => {
-          const legs = enrichedStops.slice(0, -1);
-          const pages: typeof legs[] = [];
-          for (let i = 0; i < legs.length; i += 4) pages.push(legs.slice(i, i + 4));
-          const CARD_H = "130mm";
-          const MAP_H = "108mm";
-          const LABEL_H = "22mm";
-          return (
-            <div style={{ background: "white" }}>
-              {pages.map((pagelegs, pageIdx) => (
-                <div
-                  key={pageIdx}
-                  style={{ width: "210mm", padding: "10mm", boxSizing: "border-box", pageBreakAfter: "always", breakAfter: "page" }}
-                >
-                  {pageIdx === 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "2px solid #1f2937", paddingBottom: "2mm", marginBottom: "4mm", height: "10mm" }}>
-                      <span style={{ fontWeight: "bold", fontSize: "14pt" }}>🍺 {routeName || "Halfday Pub Crawl"}</span>
-                      <span style={{ fontSize: "9pt", color: "#6b7280" }}>
-                        {enrichedStops.length} stops
-                        {totalDistance > 0
-                          ? ` · ${totalDistance < 1000 ? `${Math.round(totalDistance)}m` : `${(totalDistance / 1000).toFixed(1)}km`}`
-                          : ""}
-                      </span>
-                    </div>
-                  )}
-                  <div style={{ display: "grid", gridTemplateColumns: "93.5mm 93.5mm", gridTemplateRows: `${CARD_H} ${CARD_H}`, gap: "3mm" }}>
-                    {pagelegs.map((stop, j) => {
-                      const absIdx = pageIdx * 4 + j;
-                      const next = enrichedStops[absIdx + 1];
-                      const fromColor = gradientColor(absIdx, enrichedStops.length);
-                      const toColor = gradientColor(absIdx + 1, enrichedStops.length);
-                      return (
-                        <div key={stop.pubId} style={{ width: "93.5mm", height: CARD_H, border: "1px solid #d1d5db", borderRadius: "2mm", overflow: "hidden" }}>
-                          <div style={{ width: "93.5mm", height: MAP_H }}>
-                            <PrintLegMap
-                              from={stop.pub} to={next.pub}
-                              fromOrder={absIdx + 1} toOrder={absIdx + 2}
-                              fromColor={fromColor} toColor={toColor}
-                              routePath={legRoutes[absIdx] ?? []}
-                            />
+      {isPrinting && (() => {
+        const legs = enrichedStops.slice(0, -1);
+        const pages: typeof legs[] = [];
+        for (let i = 0; i < legs.length; i += 4) pages.push(legs.slice(i, i + 4));
+        const CARD_H = "130mm", MAP_H = "108mm", LABEL_H = "22mm";
+        return (
+          <div style={{ background: "white" }}>
+            {pages.map((pagelegs, pageIdx) => (
+              <div key={pageIdx} style={{ width: "210mm", padding: "10mm", boxSizing: "border-box", pageBreakAfter: "always", breakAfter: "page" }}>
+                {pageIdx === 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "2px solid #1f2937", paddingBottom: "2mm", marginBottom: "4mm", height: "10mm" }}>
+                    <span style={{ fontWeight: "bold", fontSize: "14pt" }}>🍺 {routeName || "Halfday Pub Crawl"}</span>
+                    <span style={{ fontSize: "9pt", color: "#6b7280" }}>{enrichedStops.length} stops{totalDistance > 0 ? ` · ${totalDistance < 1000 ? `${Math.round(totalDistance)}m` : `${(totalDistance / 1000).toFixed(1)}km`}` : ""}</span>
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "93.5mm 93.5mm", gridTemplateRows: `${CARD_H} ${CARD_H}`, gap: "3mm" }}>
+                  {pagelegs.map((stop, j) => {
+                    const absIdx = pageIdx * 4 + j;
+                    const next = enrichedStops[absIdx + 1];
+                    const fromColor = gradientColor(absIdx, enrichedStops.length);
+                    const toColor = gradientColor(absIdx + 1, enrichedStops.length);
+                    return (
+                      <div key={stop.pubId} style={{ width: "93.5mm", height: CARD_H, border: "1px solid #d1d5db", borderRadius: "2mm", overflow: "hidden" }}>
+                        <div style={{ width: "93.5mm", height: MAP_H }}>
+                          <PrintLegMap from={stop.pub} to={next.pub} fromOrder={absIdx + 1} toOrder={absIdx + 2} fromColor={fromColor} toColor={toColor} routePath={legRoutes[absIdx] ?? []} />
+                        </div>
+                        <div style={{ height: LABEL_H, padding: "2mm 3mm", borderTop: "1px solid #e5e7eb", background: "#f9fafb", boxSizing: "border-box" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "1.5mm" }}>
+                            <span style={{ width: "15px", height: "15px", borderRadius: "50%", background: fromColor, color: "white", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "7.5pt", fontWeight: "bold", flexShrink: 0 }}>{absIdx + 1}</span>
+                            <span style={{ fontSize: "8.5pt", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stop.pub.name}</span>
+                            <span style={{ fontSize: "7pt", color: "#6b7280" }}>{stop.openTime}–{stop.closeTime}</span>
                           </div>
-                          <div style={{ height: LABEL_H, padding: "2mm 3mm", borderTop: "1px solid #e5e7eb", background: "#f9fafb", boxSizing: "border-box" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "1.5mm" }}>
-                              <span style={{ width: "15px", height: "15px", borderRadius: "50%", background: fromColor, color: "white", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "7.5pt", fontWeight: "bold", flexShrink: 0 }}>{absIdx + 1}</span>
-                              <span style={{ fontSize: "8.5pt", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stop.pub.name}</span>
-                              <span style={{ fontSize: "7pt", color: "#6b7280" }}>{stop.openTime}–{stop.closeTime}</span>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                              <span style={{ width: "15px", height: "15px", borderRadius: "50%", background: toColor, color: "white", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "7.5pt", fontWeight: "bold", flexShrink: 0 }}>{absIdx + 2}</span>
-                              <span style={{ fontSize: "8.5pt", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.pub.name}</span>
-                              <span style={{ fontSize: "7pt", color: "#6b7280" }}>{next.openTime}–{next.closeTime}</span>
-                            </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <span style={{ width: "15px", height: "15px", borderRadius: "50%", background: toColor, color: "white", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "7.5pt", fontWeight: "bold", flexShrink: 0 }}>{absIdx + 2}</span>
+                            <span style={{ fontSize: "8.5pt", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.pub.name}</span>
+                            <span style={{ fontSize: "7pt", color: "#6b7280" }}>{next.openTime}–{next.closeTime}</span>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          );
-        })()}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </>
   );
 }
