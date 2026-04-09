@@ -400,11 +400,7 @@ export default function PubMap() {
           )}
         </div>
 
-        {enrichedStops.length === 0 ? (
-          <div className="px-3 pb-3 text-xs text-gray-500 text-center">
-            Go to the <button onClick={() => setActiveTab("pubs")} className="text-amber-600 underline">Pubs tab</button> to add stops
-          </div>
-        ) : (
+        {enrichedStops.length > 0 && (
           <ul>
             {enrichedStops.map((stop, i) => {
               const color = gradientColor(i, enrichedStops.length);
@@ -435,6 +431,40 @@ export default function PubMap() {
             })}
           </ul>
         )}
+
+        {/* Inline pub search — add stops without leaving this tab */}
+        <div className="border-t border-amber-100 p-2">
+          <input
+            type="text"
+            placeholder="Search pubs to add..."
+            value={pubSearch}
+            onChange={(e) => setPubSearch(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-amber-200 rounded-lg focus:outline-none focus:border-amber-400 bg-white"
+          />
+          {pubSearch.trim() && (
+            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-amber-100 bg-white">
+              {pubs
+                .filter((p) => p.name.toLowerCase().includes(pubSearch.toLowerCase()) && !stopIds.has(p.id))
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .slice(0, 20)
+                .map((pub) => (
+                  <li key={pub.id}>
+                    <button
+                      onClick={() => { addToRoute(pub.id); setPubSearch(""); }}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-amber-50 flex items-center gap-2"
+                    >
+                      <Plus size={12} className="text-amber-500 flex-shrink-0" />
+                      <span className="truncate">{pub.name}</span>
+                    </button>
+                  </li>
+                ))
+              }
+              {pubs.filter((p) => p.name.toLowerCase().includes(pubSearch.toLowerCase()) && !stopIds.has(p.id)).length === 0 && (
+                <li className="px-3 py-2 text-sm text-gray-400">No pubs found</li>
+              )}
+            </ul>
+          )}
+        </div>
       </div>
     );
   }
