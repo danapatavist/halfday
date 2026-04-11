@@ -30,6 +30,23 @@ async function fetchLegPolyline(from: Pub, to: Pub): Promise<[number, number][]>
   } catch { return []; }
 }
 
+function FitToAllStops({ stops }: { stops: Pub[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (stops.length === 0) return;
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+      if (stops.length === 1) {
+        map.setView([stops[0].lat, stops[0].lon], 16);
+      } else {
+        map.fitBounds(L.latLngBounds(stops.map(p => [p.lat, p.lon])), { padding: [32, 32], maxZoom: 17 });
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [stops.length]);
+  return null;
+}
+
 function FitToLeg({ from, to }: { from: Pub; to: Pub }) {
   const map = useMap();
   useEffect(() => {
@@ -51,6 +68,8 @@ export default function MobileApp() {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<SavedRoute | null>(null);
+  const [view, setView] = useState<'list' | 'overview' | 'walking'>('list');
+  const [overviewPolyline, setOverviewPolyline] = useState<[number, number][]>([]);
   const [currentLeg, setCurrentLeg] = useState(0);
   const [legs, setLegs] = useState<{ distance: number; duration: number }[]>([]);
   const [legPolylines, setLegPolylines] = useState<[number, number][][]>([]);
@@ -79,25 +98,47 @@ export default function MobileApp() {
     if (stops.length < 2) return;
 
     setSelectedRoute(route);
+    setView('overview');
     setCurrentLeg(0);
     setLegs([]);
     setLegPolylines([]);
+    setOverviewPolyline([]);
 
-    // Fetch leg durations/distances
+    // Fetch full route polyline + legs for overview
     const coords = stops.map(p => `${p.lon},${p.lat}`).join(';');
     fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=full&geometries=geojson`)
       .then(r => r.json())
-      .then(data => setLegs(data.routes?.[0]?.legs ?? []))
+      .then(data => {
+        const r = data.routes?.[0];
+        if (!r) return;
+        const c = r.geometry?.coordinates ?? [];
+        setOverviewPolyline(c.map(([lng, lat]: [number, number]) => [lat, lng]));
+        setLegs(r.legs ?? []);
+      })
       .catch(() => {});
+  }
 
-    // Fetch per-leg polylines
+  function startWalking() {
+    setView('walking');
+    if (!selectedRoute) return;
+    const stops = selectedRoute.stops.map(s => pubs.find(p => p.id === s.pubId)).filter(Boolean) as Pub[];
     setLegPolyLoading(true);
     Promise.all(stops.slice(0, -1).map((from, i) => fetchLegPolyline(from, stops[i + 1])))
       .then(polys => { setLegPolylines(polys); setLegPolyLoading(false); });
   }
 
+  const resolvedStops = selectedRoute
+    ? (selectedRoute.stops.map(s => pubs.find(p => p.id === s.pubId)).filter(Boolean) as Pub[])
+    : [];
+
+  const stopsWithTimes = selectedRoute
+    ? (selectedRoute.stops
+        .map(s => ({ ...pubs.find(p => p.id === s.pubId), openTime: s.openTime, closeTime: s.closeTime }))
+        .filter(s => s.id != null) as (Pub & { openTime: string; closeTime: string })[])
+    : [];
+
   // ── Route list ────────────────────────────────────────────────────────────
-  if (!selectedRoute) {
+  if (view === 'list') {
     return (
       <div className="min-h-screen bg-white text-gray-900">
         <div className="px-4 py-5 border-b border-gray-200">
@@ -134,15 +175,91 @@ export default function MobileApp() {
     );
   }
 
+  // ── Overview splash ───────────────────────────────────────────────────────
+  if (view === 'overview' && selectedRoute) {
+    const totalDist = legs.reduce((s, l) => s + l.distance, 0);
+    const totalDur = legs.reduce((s, l) => s + l.duration, 0);
+    const center: [number, number] = resolvedStops.length > 0
+      ? [resolvedStops.reduce((s, p) => s + p.lat, 0) / resolvedStops.length,
+         resolvedStops.reduce((s, p) => s + p.lon, 0) / resolvedStops.length]
+      : [52.63, 1.3];
+
+    return (
+      <div className="min-h-screen bg-white text-gray-900 flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-4 border-b border-gray-200 flex items-center gap-3 shrink-0">
+          <button onClick={() => { setSelectedRoute(null); setView('list'); }} className="text-gray-400 hover:text-gray-700 text-sm">
+            ← Routes
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-bold truncate">{selectedRoute.name}</h1>
+            <p className="text-xs text-gray-400">
+              {resolvedStops.length} stops
+              {totalDist > 0 && ` · ${totalDist < 1000 ? `${Math.round(totalDist)}m` : `${(totalDist / 1000).toFixed(1)}km`}`}
+              {totalDur > 0 && ` · ${Math.round(totalDur / 60)} min walking`}
+            </p>
+          </div>
+          <button
+            onClick={startWalking}
+            className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-colors shrink-0"
+          >
+            Start →
+          </button>
+        </div>
+
+        {/* Map */}
+        {mounted && (
+          <div style={{ height: '45vh' }} className="shrink-0">
+            <MapContainer center={center} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={false} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+              <FitToAllStops stops={resolvedStops} />
+              {overviewPolyline.length > 1 && <Polyline positions={overviewPolyline} color="#6366f1" weight={3} opacity={0.8} />}
+              {resolvedStops.map((pub, i) => (
+                <Marker key={pub.id} position={[pub.lat, pub.lon]} icon={routeIcon(i + 1, gradientColor(i, resolvedStops.length))} />
+              ))}
+            </MapContainer>
+          </div>
+        )}
+
+        {/* Stop list */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {stopsWithTimes.map((stop, i) => (
+            <div key={stop.id}>
+              <div className="flex items-center gap-3 py-3">
+                <span className="w-7 h-7 rounded-full text-white text-xs flex items-center justify-center shrink-0 font-bold"
+                  style={{ background: gradientColor(i, stopsWithTimes.length) }}>
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm text-gray-900">{stop.name}</p>
+                  {(stop.openTime || stop.closeTime) && (
+                    <p className="text-xs text-gray-400">
+                      {stop.openTime && `from ${stop.openTime}`}
+                      {stop.openTime && stop.closeTime && ' · '}
+                      {stop.closeTime && `until ${stop.closeTime}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {i < stopsWithTimes.length - 1 && (
+                <div className="flex items-center gap-2 pl-10 pb-1 text-xs text-gray-400">
+                  <span>👣</span>
+                  {legs[i] ? (
+                    <span>{Math.round(legs[i].duration / 60)} min · {legs[i].distance < 1000 ? `${Math.round(legs[i].distance)}m` : `${(legs[i].distance / 1000).toFixed(1)}km`}</span>
+                  ) : (
+                    <span className="opacity-40">···</span>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ── Walking step view ─────────────────────────────────────────────────────
-  const stops = selectedRoute.stops
-    .map(s => pubs.find(p => p.id === s.pubId))
-    .filter(Boolean) as Pub[];
-
-  const stopsWithTimes = selectedRoute.stops
-    .map(s => ({ ...pubs.find(p => p.id === s.pubId), openTime: s.openTime, closeTime: s.closeTime }))
-    .filter(s => s.id != null) as (Pub & { openTime: string; closeTime: string })[];
-
+  const stops = resolvedStops;
   const from = stops[currentLeg];
   const to = stops[currentLeg + 1];
   const fromStop = stopsWithTimes[currentLeg];
@@ -156,10 +273,10 @@ export default function MobileApp() {
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3 shrink-0">
         <button
-          onClick={() => setSelectedRoute(null)}
+          onClick={() => setView('overview')}
           className="text-gray-400 hover:text-gray-700 transition-colors text-sm"
         >
-          ← Routes
+          ← Overview
         </button>
         <span className="flex-1 text-center text-sm text-gray-400">
           Leg {currentLeg + 1} of {total}
