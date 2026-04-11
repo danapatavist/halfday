@@ -259,6 +259,7 @@ export default function MobileApp() {
   }
 
   // ── Walking step view ─────────────────────────────────────────────────────
+  if (view !== 'walking' || !selectedRoute) return null;
   const stops = resolvedStops;
   const from = stops[currentLeg];
   const to = stops[currentLeg + 1];
