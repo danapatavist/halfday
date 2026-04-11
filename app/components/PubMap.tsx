@@ -627,7 +627,6 @@ export default function PubMap() {
           {savedRoutes.map((route) => {
             const stats = routeStats.get(route.id);
             const distStr = stats ? (stats.distance < 1000 ? `${Math.round(stats.distance)}m` : `${(stats.distance / 1000).toFixed(1)}km`) : null;
-            const durStr = stats ? `${Math.round(stats.duration / 60)} min` : null;
             return (
               <div key={route.id} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => previewRoute(route)}>
                 <div className="flex-1 min-w-0">
@@ -635,7 +634,6 @@ export default function PubMap() {
                   <p className="text-xs text-gray-400">
                     {route.stops.length} stop{route.stops.length !== 1 ? "s" : ""}
                     {distStr && <> · {distStr}</>}
-                    {durStr && <> · {durStr}</>}
                     {" · "}{new Date(route.createdAt).toLocaleDateString()}
                   </p>
                 </div>

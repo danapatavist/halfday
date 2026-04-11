@@ -74,6 +74,7 @@ export default function MobileApp() {
   const [legs, setLegs] = useState<{ distance: number; duration: number }[]>([]);
   const [legPolylines, setLegPolylines] = useState<[number, number][][]>([]);
   const [legPolyLoading, setLegPolyLoading] = useState(false);
+  const [routeStats, setRouteStats] = useState<Map<string, { distance: number; duration: number }>>(new Map());
 
   useEffect(() => {
     setMounted(true);
@@ -90,6 +91,20 @@ export default function MobileApp() {
       }
       setPubs(merged);
       setLoading(false);
+      // Fetch stats for each route
+      routesData.forEach((route: SavedRoute) => {
+        const routePubs = route.stops.map((s: RouteStop) => merged.find(p => p.id === s.pubId)).filter(Boolean) as Pub[];
+        if (routePubs.length < 2) return;
+        const coords = routePubs.map(p => `${p.lon},${p.lat}`).join(';');
+        fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=false`)
+          .then(r => r.json())
+          .then(data => {
+            const r = data.routes?.[0];
+            if (!r) return;
+            setRouteStats(prev => new Map(prev).set(route.id, { distance: r.distance, duration: r.duration }));
+          })
+          .catch(() => {});
+      });
     }).catch(() => setLoading(false));
   }, []);
 
@@ -156,18 +171,23 @@ export default function MobileApp() {
             </div>
           ) : (
             <div className="space-y-3">
-              {routes.map(route => (
-                <button
-                  key={route.id}
-                  onClick={() => selectRoute(route)}
-                  className="w-full text-left p-4 bg-gray-50 rounded-2xl border border-gray-100 active:bg-amber-50 active:border-amber-200 transition-colors"
-                >
-                  <p className="font-semibold text-gray-900 text-base">{route.name}</p>
-                  <p className="text-sm text-gray-400 mt-0.5">
-                    {route.stops.length} stop{route.stops.length !== 1 ? 's' : ''}
-                  </p>
-                </button>
-              ))}
+              {routes.map(route => {
+                const stats = routeStats.get(route.id);
+                const distStr = stats ? (stats.distance < 1000 ? `${Math.round(stats.distance)}m` : `${(stats.distance / 1000).toFixed(1)}km`) : null;
+                return (
+                  <button
+                    key={route.id}
+                    onClick={() => selectRoute(route)}
+                    className="w-full text-left p-4 bg-gray-50 rounded-2xl border border-gray-100 active:bg-amber-50 active:border-amber-200 transition-colors"
+                  >
+                    <p className="font-semibold text-gray-900 text-base">{route.name}</p>
+                    <p className="text-sm text-gray-400 mt-0.5">
+                      {route.stops.length} stop{route.stops.length !== 1 ? 's' : ''}
+                      {distStr && ` · ${distStr}`}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -196,7 +216,6 @@ export default function MobileApp() {
             <p className="text-xs text-gray-400">
               {resolvedStops.length} stops
               {totalDist > 0 && ` · ${totalDist < 1000 ? `${Math.round(totalDist)}m` : `${(totalDist / 1000).toFixed(1)}km`}`}
-              {totalDur > 0 && ` · ${Math.round(totalDur / 60)} min walking`}
             </p>
           </div>
           <button
